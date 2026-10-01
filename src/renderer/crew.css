@@ -1,0 +1,324 @@
+/* Crew: the task board, starter cards, the roster, the chat brief, and the forms. */
+
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 2px 12px;
+}
+
+.kanban section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: var(--r-md);
+  background: var(--wash);
+}
+
+.kanban h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 2px 2px;
+  color: var(--quiet);
+  font: 600 10.5px/1.3 var(--chrome);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.kanban h3::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--quiet);
+}
+
+.kanban section:nth-child(2) h3::before { background: var(--token); box-shadow: 0 0 6px var(--token); }
+.kanban section:nth-child(3) h3::before { background: var(--glow); }
+
+.kanban .empty {
+  margin: 0 2px;
+}
+
+.kanban button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--voice);
+  background: color-mix(in srgb, var(--sheet) 80%, var(--voice) 4%);
+  text-align: left;
+  transition: border-color var(--fast) ease, transform var(--fast) var(--ease), box-shadow var(--fast) ease;
+}
+
+.kanban button:hover {
+  border-color: color-mix(in srgb, var(--glow) 45%, var(--line));
+  box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.6);
+  transform: translateY(-1px);
+}
+
+.kanban b,
+.kanban p {
+  display: block;
+  margin: 0;
+  color: var(--voice);
+  font: 13px/1.4 var(--voice-font);
+}
+
+.kanban p {
+  color: color-mix(in srgb, var(--voice) 80%, var(--quiet));
+  font-size: 12px;
+}
+
+.kanban em {
+  display: block;
+  margin-top: 4px;
+  color: var(--quiet);
+  font: normal 10.5px/1.35 var(--chrome);
+}
+
+@media (max-width: 720px) {
+  .kanban {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hire {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+  padding: 0 2px 10px;
+}
+
+.hire-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--voice);
+  background: color-mix(in srgb, var(--fur) 86%, var(--hide));
+  font: 12px/1.4 var(--voice-font);
+  text-align: left;
+  transition: border-color var(--fast) ease, transform var(--mid) var(--spring), box-shadow var(--mid) ease, background var(--fast) ease;
+}
+
+.hire-card:hover {
+  border-color: color-mix(in srgb, var(--glow) 55%, var(--line));
+  box-shadow: 0 12px 22px -14px var(--glow);
+  transform: translateY(-2px);
+}
+
+.hire-card.on {
+  border-color: var(--glow);
+  background: var(--tint);
+}
+
+.hire-card b {
+  display: block;
+  color: var(--glow);
+  font: 600 12px/1.3 var(--chrome);
+}
+
+.hire-card em {
+  display: block;
+  margin: 2px 0 5px;
+  color: var(--accent);
+  font: normal 11px/1.3 var(--chrome);
+}
+
+.hire-card span {
+  display: block;
+  color: var(--quiet);
+}
+
+.roster {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 2px 10px;
+}
+
+.roster .empty {
+  margin: 2px 4px 4px;
+}
+
+.mate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 2px;
+  border-radius: var(--r-md);
+  transition: background var(--fast) ease;
+}
+
+.mate:hover {
+  background: var(--wash);
+}
+
+.mate.current {
+  background: var(--tint);
+  box-shadow: inset 2px 0 0 var(--glow);
+}
+
+.mate .open {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  color: var(--voice);
+  text-align: left;
+}
+
+.mate .open b {
+  display: block;
+  font: 600 13px/1.3 var(--chrome);
+}
+
+.mate .open em {
+  display: block;
+  margin: 1px 0 3px;
+  color: var(--accent);
+  font: normal 11px/1.3 var(--chrome);
+}
+
+.mate .open span {
+  display: block;
+  overflow: hidden;
+  color: var(--quiet);
+  font: 12px/1.4 var(--voice-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Who this chat belongs to, above the transcript. */
+.crew-brief {
+  flex: 0 0 auto;
+  margin: 10px var(--gutter) 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--glow) 25%, var(--line));
+  border-radius: var(--r-md);
+  background: linear-gradient(120deg, var(--tint), transparent 80%);
+}
+
+.crew-brief-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.crew-brief-who b {
+  color: var(--glow);
+  font: 600 12.5px/1.3 var(--chrome);
+}
+
+.crew-brief-who span,
+.crew-brief p {
+  margin: 0;
+  color: var(--quiet);
+  font: 11.5px/1.45 var(--chrome);
+}
+
+.crew-brief p {
+  display: -webkit-box;
+  margin: 4px 0 8px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.starts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.starts button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dossier {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px 10px;
+}
+
+.dossier label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--quiet);
+  font: 600 10.5px/1.3 var(--chrome);
+  letter-spacing: 0.06em;
+}
+
+.dossier textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.dossier .fold label + label {
+  margin-top: 10px;
+}
+
+.dossier select option {
+  color: var(--voice);
+  background: var(--sheet);
+}
+
+.fold {
+  margin: 10px 2px 0;
+  border-top: 1px solid var(--line);
+}
+
+.fold summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 4px;
+  color: var(--quiet);
+  font: 600 10.5px/1.3 var(--chrome);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--fast) ease;
+}
+
+.fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold summary:hover {
+  color: var(--voice);
+}
+
+.fold-act {
+  margin: 0 0 10px 4px;
+}
+
+.danger {
+  align-self: flex-start;
+  height: 28px;
+  margin: 4px 2px 0;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  font: 600 11px/1 var(--chrome);
+  letter-spacing: 0.06em;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.danger:hover {
+  color: #2a0a10;
+  background: var(--bad);
+}

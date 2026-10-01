@@ -1,0 +1,16 @@
+{
+  "name": "Nova Collar",
+  "repo": "https://github.com/Squidspork/nova-collar",
+  "chat": "Bring your own chat model. Ollama, LM Studio, or any OpenAI-compatible https address. GitHub release files stop at 2 GB, so a local 27B is not in this download.",
+  "pieces": [
+    {
+      "id": "laya",
+      "title": "Laya decider",
+      "path": "models/laya-np",
+      "marker": "models/laya-np/model.safetensors",
+      "tag": "materials-1",
+      "file": "laya-np.tar.gz",
+      "note": "Optional. About 1 GB. The window runs without it. nova-collar update laya fetches it."
+    }
+  ]
+}

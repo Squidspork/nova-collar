@@ -1,0 +1,154 @@
+{
+  "name": "novapup",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "description": "Nova Collar — Hungry Nova Labs agent window: chat, terminal, this system",
+  "type": "module",
+  "main": "src/main/index.js",
+  "bin": {
+    "nova-collar": "src/cli/np.js",
+    "np": "src/cli/np.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/vendor-xterm.js && node scripts/rebuild-pty.js && node scripts/build-mac-control.js",
+    "build:mac": "node scripts/build-mac-control.js",
+    "rebuild": "node scripts/rebuild-pty.js",
+    "icon": "python3 scripts/make-icon.py",
+    "tentacle": "node src/main/tentacle/server.js",
+    "test:tentacle": "node scripts/test-tentacle.mjs",
+    "start": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && electron .",
+    "setup": "node src/cli/np.js install",
+    "np": "node src/cli/np.js",
+    "pack": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && python3 scripts/make-icon.py && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish never && xattr -cr \"dist/mac-arm64/Nova Collar.app\"",
+    "release": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && python3 scripts/make-icon.py && electron-builder --mac dmg zip --arm64 --publish never",
+    "release:win": "node scripts/vendor-xterm.js && electron-builder --win nsis zip --x64 --publish never",
+    "release:linux": "node scripts/vendor-xterm.js && electron-builder --linux AppImage deb --x64 --publish never"
+  },
+  "author": "Hungry Nova",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron-updater": "^6.8.9",
+    "node-pty": "^1.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "electron": "^36.9.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.hungrynova.novapup",
+    "productName": "Nova Collar",
+    "afterSign": "scripts/notarize.cjs",
+    "afterAllArtifactBuild": "scripts/notarize-dmg.cjs",
+    "artifactName": "Nova-Collar-${version}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "Squidspork",
+      "repo": "nova-collar"
+    },
+    "files": [
+      "src/**/*",
+      "data/**/*",
+      "materials/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-pty/**"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts/laya_np.py",
+        "to": "laya_np.py"
+      },
+      {
+        "from": "data/laya-np-question.json",
+        "to": "laya-np-question.json"
+      },
+      {
+        "from": "data/laya-np-loop.json",
+        "to": "laya-np-loop.json"
+      },
+      {
+        "from": "data/laya-np-goal.json",
+        "to": "laya-np-goal.json"
+      },
+      {
+        "from": "data/laya-np-audit.json",
+        "to": "laya-np-audit.json"
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "extraResources": [
+        {
+          "from": "bin/mac-control",
+          "to": "mac-control"
+        }
+      ],
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "CFBundleDisplayName": "Nova Collar",
+        "CFBundleName": "Nova Collar"
+      }
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "Hungry Nova Labs <noreply@hungrynovalabs.com>",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

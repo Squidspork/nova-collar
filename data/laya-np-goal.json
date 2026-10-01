@@ -1,0 +1,9 @@
+{
+  "type": "choice",
+  "instructions": "A standing goal is open. Nova Pup is about to stop. What should it do?",
+  "criteria": {
+    "keep": "the goal is not met and a different step can still move it. Do not stop.",
+    "done": "the goal is already true. Stop and report the result.",
+    "stuck": "the same wall is back and no different step can move the goal. Stop and say what is left."
+  }
+}

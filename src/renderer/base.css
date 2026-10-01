@@ -1,0 +1,259 @@
+/* Tokens, reset, and the primitives every panel shares.
+   Theme colors come from themes.css. Keyframes and enter/exit motion live in motion.css. */
+
+:root {
+  interpolate-size: allow-keywords;
+  --u: 1;
+  --t: calc(11px * var(--u));
+  --voice-size: calc(15px * var(--u));
+  --pad: calc(8px * var(--u));
+  --gap: calc(6px * var(--u));
+  --gutter: 10px;
+  --chrome: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --voice-font: "SF Pro Text", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --track: -0.011em;
+  --you: #c9c4b8;
+  --bad: #fb7185;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --fast: 160ms;
+  --mid: 260ms;
+  --slow: 420ms;
+  --r-sm: 9px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --surface: color-mix(in srgb, var(--fur) 92%, transparent);
+  --tint: color-mix(in srgb, var(--glow) 13%, transparent);
+  --tint-hi: color-mix(in srgb, var(--glow) 24%, transparent);
+  --wash: color-mix(in srgb, var(--voice) 6%, transparent);
+  --wash-hi: color-mix(in srgb, var(--voice) 12%, transparent);
+  --shine: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --lift: 0 16px 36px -18px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--glow) 34%, transparent);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  min-width: 0;
+  background: var(--hide);
+  color: var(--voice);
+  font: var(--voice-size)/1.55 var(--voice-font);
+  letter-spacing: var(--track);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--glow) 30%, transparent);
+}
+
+svg.i {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Text fields: forms, keys, the spec prompt. */
+.dossier input,
+.dossier textarea,
+.dossier select,
+.lane-row select,
+.wake input,
+.wake select,
+#spec-ask input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  outline: none;
+  color: var(--voice);
+  background: color-mix(in srgb, var(--hide) 55%, transparent);
+  font: 13px/1.4 var(--voice-font);
+  transition: border-color var(--fast) ease, box-shadow var(--fast) ease, background var(--fast) ease;
+}
+
+.dossier input:focus,
+.dossier textarea:focus,
+.dossier select:focus,
+.lane-row select:focus,
+.wake input:focus,
+.wake select:focus,
+#spec-ask input:focus {
+  border-color: color-mix(in srgb, var(--glow) 60%, var(--line));
+  background: color-mix(in srgb, var(--hide) 70%, transparent);
+  box-shadow: var(--ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--quiet) 80%, transparent);
+}
+
+/* Action pills: the small verbs on notices, sheets, and cards. */
+.sheet-head button:not(.sheet-x),
+.notice button,
+.setup-acts button,
+.wake button,
+.fold-act,
+.mate .edit,
+.starts button,
+#voice-make,
+#spec-ask button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--r-pill);
+  color: var(--glow);
+  background: var(--tint);
+  font: 11px/1 var(--chrome);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: background var(--fast) ease, color var(--fast) ease, transform var(--fast) var(--ease), box-shadow var(--fast) ease;
+}
+
+.sheet-head button:not(.sheet-x):hover,
+.notice button:hover,
+.setup-acts button:hover,
+.wake button:hover,
+.fold-act:hover,
+.mate .edit:hover,
+.starts button:hover,
+#voice-make:hover,
+#spec-ask button:hover {
+  color: var(--voice);
+  background: var(--tint-hi);
+  transform: translateY(-1px);
+}
+
+.sheet-head button:not(.sheet-x):active,
+.notice button:active,
+.setup-acts button:active,
+.wake button:active,
+.fold-act:active,
+.mate .edit:active,
+.starts button:active,
+#voice-make:active {
+  transform: scale(0.96);
+}
+
+.empty {
+  margin: 4px;
+  color: var(--quiet);
+  font: 11px/1.45 var(--chrome);
+}
+
+/* Scroll ports and touch. The window drags from the header; everything else takes input. */
+.face,
+.sheet,
+.wake,
+.setup,
+.msg .md pre,
+.xterm-viewport {
+  -webkit-app-region: no-drag;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.stage,
+.mouth,
+.drawers,
+.notice,
+.now {
+  -webkit-app-region: no-drag;
+}
+
+button,
+a,
+input,
+textarea,
+select,
+summary,
+.split {
+  touch-action: manipulation;
+}
+
+@media (any-pointer: coarse) {
+  .bits button,
+  .drawer-toggle,
+  .pane-head,
+  .dock-btn,
+  .home-fold,
+  .packs button,
+  .chat-item,
+  .model,
+  .crew-tag,
+  .goal-tag,
+  .sheet-x,
+  .sheet-head button,
+  .notice button,
+  .wake button {
+    min-height: 44px;
+  }
+
+  .home-fold,
+  .sheet-x {
+    min-width: 44px;
+  }
+
+  .mouth button.go {
+    width: 48px;
+    height: 48px;
+  }
+
+  .mouth textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}

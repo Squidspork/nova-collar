@@ -1,0 +1,328 @@
+/* Motion: panels slide open and closed, lists and messages rise in, and every keyframe lives here. */
+
+/* Panels that sit in the flow grow from nothing and fold back into nothing. */
+.notice,
+.now,
+.sheet:not(.page) {
+  transition:
+    opacity var(--mid) var(--ease),
+    transform var(--mid) var(--ease),
+    height var(--mid) var(--ease),
+    margin-top var(--mid) var(--ease),
+    padding-block var(--mid) var(--ease),
+    border-width var(--mid) var(--ease),
+    display var(--mid) allow-discrete;
+}
+
+:is(.notice, .now, .sheet:not(.page))[hidden] {
+  height: 0;
+  margin-top: 0;
+  padding-block: 0;
+  border-width: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@starting-style {
+  .notice,
+  .now,
+  .sheet:not(.page) {
+    height: 0;
+    margin-top: 0;
+    padding-block: 0;
+    border-width: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* Full pages swap with the chat at once, so they only fade in. */
+.sheet.page {
+  animation: rise var(--slow) var(--ease) backwards;
+}
+
+/* Small pieces and floating layers fade and scale. */
+.crew-brief,
+.pack-hint,
+.crew-tag,
+.goal-tag,
+.wake,
+.setup,
+.credits,
+.spec-menu,
+#spec-ask {
+  transition:
+    opacity var(--mid) var(--ease),
+    scale var(--mid) var(--spring),
+    display var(--mid) allow-discrete;
+}
+
+:is(.crew-brief, .pack-hint, .crew-tag, .goal-tag, .wake, .setup, .credits, .spec-menu, #spec-ask)[hidden] {
+  opacity: 0;
+  scale: 0.97;
+}
+
+@starting-style {
+  .crew-brief,
+  .pack-hint,
+  .crew-tag,
+  .goal-tag,
+  .wake,
+  .setup,
+  .credits,
+  .spec-menu,
+  #spec-ask {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+.spec-menu {
+  transition-duration: var(--fast);
+}
+
+/* Folding the header bar. overflow-clip-margin keeps hover lift and glow from being cut off. */
+.bits,
+.drawers {
+  overflow: clip;
+  overflow-clip-margin: 10px;
+  transition:
+    opacity var(--mid) var(--ease),
+    height var(--mid) var(--ease),
+    margin-top var(--mid) var(--ease),
+    display var(--mid) allow-discrete;
+}
+
+.creature[data-home="off"] :is(.bits, .drawers) {
+  height: 0;
+  margin-top: 0;
+  opacity: 0;
+}
+
+@starting-style {
+  .creature[data-home="on"] :is(.bits, .drawers) {
+    height: 0;
+    margin-top: 0;
+    opacity: 0;
+  }
+}
+
+.creature:is(.crew-open, .spec-open) :is(.now, .drawers) {
+  transition: none;
+}
+
+/* Step cards and folds open smoothly. */
+.step::details-content,
+.fold::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition:
+    block-size var(--mid) var(--ease),
+    content-visibility var(--mid) allow-discrete;
+}
+
+.step[open]::details-content,
+.fold[open]::details-content {
+  block-size: auto;
+}
+
+/* Chips and list rows rise in one after another. */
+.drawer.open .packs button,
+.sheet-list > *,
+.hire > *,
+.kanban > section,
+.roster > *,
+.starts > * {
+  animation: rise var(--mid) var(--ease) backwards;
+}
+
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(2) { animation-delay: 25ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(3) { animation-delay: 50ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(4) { animation-delay: 75ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(5) { animation-delay: 100ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(6) { animation-delay: 125ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(7) { animation-delay: 150ms; }
+:is(.drawer.open .packs, .sheet-list, .hire, .kanban, .roster, .starts) > :nth-child(n + 8) { animation-delay: 175ms; }
+
+/* Messages. */
+.msg.pop,
+.step.pop {
+  animation: rise var(--slow) var(--ease) backwards;
+}
+
+.msg.user.pop {
+  transform-origin: 100% 100%;
+  animation-name: rise-right;
+}
+
+.step.ok.land {
+  animation: land-ok 0.6s var(--ease);
+}
+
+.step.bad.land {
+  animation: land-bad 0.4s ease;
+}
+
+.face:empty::before {
+  animation: rise 0.6s var(--ease) backwards;
+}
+
+.face:empty::after {
+  animation: rise 0.6s var(--ease) 0.12s backwards;
+}
+
+.creature:not([data-mood="idle"]) .spine i {
+  animation: thumb-glow 1.2s ease-in-out infinite;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 380ms;
+  animation-timing-function: var(--ease);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+}
+
+@keyframes rise-right {
+  from { opacity: 0; transform: translateX(14px) scale(0.97); }
+}
+
+@keyframes land-ok {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--glow) 45%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+
+@keyframes land-bad {
+  0%, 100% { translate: 0; }
+  20% { translate: -4px; }
+  40% { translate: 4px; }
+  60% { translate: -3px; }
+}
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes text-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes thumb-glow {
+  50% { box-shadow: 0 0 16px var(--glow); }
+}
+
+@keyframes ping-dot {
+  50% { scale: 0.6; opacity: 0.5; }
+}
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(8%, 6%, 0) scale(1.08); }
+}
+
+@keyframes halo-pulse {
+  50% { opacity: 0.45; transform: scaleX(1.04); }
+}
+
+@keyframes spark {
+  0%, 100% { transform: translateY(0) scale(0.6); opacity: 0.15; }
+  50% { transform: translateY(-10px) scale(1.2); opacity: 0.9; }
+}
+
+@keyframes orb-bounce {
+  50% { transform: translateY(-3px) scale(1.15); }
+}
+
+@keyframes dot-pop {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.25; }
+  40% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes idle-blink {
+  0%, 94%, 100% { scale: 1 1; }
+  97% { scale: 1 0.1; }
+}
+
+@keyframes blink {
+  50% { opacity: 0.35; }
+}
+
+@keyframes type-blink {
+  50% { opacity: 0.55; }
+}
+
+@keyframes code-flicker {
+  50% { opacity: 0.7; }
+}
+
+@keyframes paint-spin {
+  50% { scale: 1.08; }
+}
+
+@keyframes pupil-scan {
+  0%, 100% { transform: translateX(-2px); }
+  50% { transform: translateX(2px); }
+}
+
+@keyframes pupil-radar {
+  from { transform: rotate(0deg) translateX(2px); }
+  to { transform: rotate(360deg) translateX(2px); }
+}
+
+/* Ear keyframes use rotate and translate so they stack on each ear's resting tilt. */
+@keyframes ear-perk-left {
+  50% { rotate: -12deg; translate: 0 -2px; }
+}
+
+@keyframes ear-perk-right {
+  50% { rotate: 12deg; translate: 0 -2px; }
+}
+
+@keyframes ear-tap {
+  50% { translate: 0 2px; }
+}
+
+@keyframes ear-swish-left {
+  50% { rotate: -16deg; }
+}
+
+@keyframes ear-swish-right {
+  50% { rotate: 16deg; }
+}
+
+@keyframes credits-crawl {
+  from { transform: rotateX(16deg) translateY(85%); }
+  to { transform: rotateX(16deg) translateY(-130%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .credits-sky {
+    overflow: auto;
+    perspective: none;
+  }
+
+  .credits-crawl {
+    padding-top: 12vh;
+    animation: none;
+    transform: none;
+  }
+}

@@ -1,0 +1,45 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("pup", {
+  state: () => ipcRenderer.invoke("state"),
+  saveKeys: (keys) => ipcRenderer.invoke("keys", keys),
+  pin: (on) => ipcRenderer.invoke("pin", on),
+  openSettings: () => ipcRenderer.invoke("open-settings"),
+  chat: (text, pack) => ipcRenderer.invoke("chat", { text, pack: pack || "" }),
+  stop: () => ipcRenderer.invoke("stop"),
+  sessions: () => ipcRenderer.invoke("sessions:list"),
+  newChat: () => ipcRenderer.invoke("sessions:new"),
+  openChat: (id) => ipcRenderer.invoke("sessions:open", id),
+  on: (fn) => {
+    const wrap = (_event, payload) => fn(payload);
+    ipcRenderer.on("pup", wrap);
+    return () => ipcRenderer.removeListener("pup", wrap);
+  },
+  termWrite: (data) => ipcRenderer.send("term-write", data),
+  termResize: (size) => ipcRenderer.send("term-resize", size),
+  min: () => ipcRenderer.send("window-min"),
+  quit: () => ipcRenderer.send("window-close"),
+  grow: (size) => ipcRenderer.invoke("window-grow", size),
+  setWorkdir: (path) => ipcRenderer.invoke("workdir:set", path),
+  pickWorkdir: () => ipcRenderer.invoke("workdir:pick"),
+  setModel: (id) => ipcRenderer.invoke("model", id),
+  setLane: (lane, model) => ipcRenderer.invoke("model:lane", { lane, model }),
+  bots: () => ipcRenderer.invoke("bots:list"),
+  saveBot: (bot) => ipcRenderer.invoke("bots:save", bot),
+  saveTask: (task) => ipcRenderer.invoke("tasks:save", task),
+  openBot: (id) => ipcRenderer.invoke("bots:open", id),
+  removeBot: (id) => ipcRenderer.invoke("bots:remove", id),
+  reviewSense: () => ipcRenderer.invoke("intuition:review"),
+  readVoice: () => ipcRenderer.invoke("voice:read"),
+  makeVoices: (wish) => ipcRenderer.invoke("voice:make", wish),
+  setVoice: (text) => ipcRenderer.invoke("voice:set", text),
+  setupScan: () => ipcRenderer.invoke("setup:scan"),
+  setupInstall: () => ipcRenderer.invoke("setup:install"),
+  setupUse: (pick) => ipcRenderer.invoke("setup:use", pick),
+  setupSkip: () => ipcRenderer.invoke("setup:skip"),
+  specRead: () => ipcRenderer.invoke("spec:read"),
+  specWrite: (text) => ipcRenderer.invoke("spec:write", text),
+  specComplete: (body) => ipcRenderer.invoke("spec:complete", body),
+  copyText: (text) => ipcRenderer.invoke("clipboard:write", text),
+  os: process.platform,
+});
