@@ -1,0 +1,232 @@
+/* The transcript: turns, messages, markdown, and tool step cards. */
+
+.stage {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.stage[data-dock="side"] {
+  flex-direction: row;
+}
+
+.stage[data-term="off"] {
+  flex-direction: column;
+}
+
+.chat-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.face {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px calc(var(--gutter) + 6px) 10px;
+  overflow: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  user-select: text;
+  mask-image: linear-gradient(to bottom, transparent, #000 16px);
+}
+
+.face > * {
+  flex: 0 0 auto;
+}
+
+.face > :first-child {
+  margin-top: auto;
+}
+
+.face:empty {
+  justify-content: flex-end;
+  gap: 6px;
+  padding-bottom: 18px;
+}
+
+.face:empty::before {
+  content: "Nova Collar";
+  color: var(--voice);
+  font: 600 calc(34px * var(--u))/1.05 var(--voice-font);
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 28px var(--glow-dim);
+}
+
+.face:empty::after {
+  content: "This system, the terminal, and Hungry Nova. One window.";
+  max-width: 28ch;
+  color: var(--quiet);
+  font-size: calc(14px * var(--u));
+  line-height: 1.45;
+}
+
+.turn {
+  margin: 0 0 calc(18px * var(--u));
+}
+
+.turn .msg.assistant {
+  margin: calc(10px * var(--u)) 0 0;
+}
+
+.turn .msg.assistant:first-child {
+  margin-top: 0;
+}
+
+.msg {
+  max-width: 100%;
+  margin: 0 0 calc(14px * var(--u));
+  font-size: var(--voice-size);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.msg.rich {
+  white-space: normal;
+}
+
+.msg.assistant {
+  color: var(--voice);
+}
+
+.msg.assistant .md {
+  max-width: 68ch;
+}
+
+.msg.user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 9px 14px 10px;
+  border-radius: 18px 18px 6px 18px;
+  color: var(--you);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--glow) 24%, var(--skin)), color-mix(in srgb, var(--glow) 11%, var(--skin)));
+  box-shadow: var(--shine), 0 10px 22px -16px rgba(0, 0, 0, 0.7);
+}
+
+.msg.user::before {
+  content: "you";
+  display: block;
+  margin-bottom: 3px;
+  color: color-mix(in srgb, var(--you) 55%, transparent);
+  font: 600 9.5px/1 var(--chrome);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.msg.error {
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+  border-radius: var(--r-md);
+  color: color-mix(in srgb, var(--bad) 40%, var(--voice));
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+
+.msg.tool {
+  padding: 0 2px;
+  color: var(--quiet);
+  font-size: 11px;
+}
+
+.msg.streaming::after {
+  content: "▍";
+  margin-left: 2px;
+  color: var(--glow);
+  animation: type-blink 0.8s steps(2, end) infinite;
+}
+
+.msg .md > * { margin: 0 0 0.9em; }
+.msg .md > :last-child { margin-bottom: 0; }
+.msg .md p,
+.msg .md li { line-height: 1.65; }
+.msg .md .lead { font-weight: 650; color: var(--voice); }
+.msg .md strong { font-weight: 700; color: var(--voice); }
+.msg .md ul,
+.msg .md ol { padding-left: 1.25em; }
+.msg .md li { margin: 0.45em 0; }
+.msg .md li::marker { color: var(--token); }
+
+.msg .md h1,
+.msg .md h2,
+.msg .md h3 {
+  margin-top: 1.15em;
+  color: var(--voice);
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.msg .md code {
+  padding: 0.05em 0.35em;
+  border-radius: 5px;
+  color: var(--token);
+  background: color-mix(in srgb, var(--token) 15%, transparent);
+  font-family: var(--chrome);
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.msg .md pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--token) 22%, var(--line));
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--token) 7%, var(--paws));
+}
+
+.msg .md pre code {
+  padding: 0;
+  color: var(--voice);
+  background: transparent;
+  font-size: calc(13px * var(--u));
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.msg .md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.msg .md th,
+.msg .md td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.msg .md th {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.msg img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 72px;
+  margin-top: 6px;
+  border-radius: var(--r-sm);
+  object-fit: contain;
+}
+
+.msg img.art {
+  width: 100%;
+  max-height: 260px;
+  background: var(--paws);
+}

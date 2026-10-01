@@ -1,0 +1,185 @@
+/* The creature itself: background glow, halo, ears, and eyes. Mood drives all of it. */
+
+.atmosphere,
+.halo {
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.atmosphere {
+  inset: 0;
+  overflow: hidden;
+}
+
+.atmosphere i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(36px);
+  opacity: 0.35;
+  animation: drift 14s var(--ease) infinite alternate;
+  transition: opacity var(--slow) ease;
+}
+
+.atmosphere b {
+  display: none;
+}
+
+.atmosphere i:first-child {
+  width: 46%;
+  height: 28%;
+  left: -8%;
+  top: 8%;
+  background: var(--glow-dim);
+}
+
+.atmosphere i:nth-child(2) {
+  width: 38%;
+  height: 24%;
+  right: -10%;
+  bottom: 12%;
+  background: color-mix(in srgb, var(--mood-search) 35%, transparent);
+  animation-delay: -6s;
+}
+
+.creature:not([data-mood="idle"]) .atmosphere i:first-child {
+  opacity: 0.9;
+  animation-duration: 7s;
+}
+
+.halo {
+  inset: -18px -10px auto;
+  height: 90px;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 70%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 68%);
+  transition: opacity var(--slow) ease;
+}
+
+.creature[data-mood="idle"] .halo {
+  opacity: 0.28;
+}
+
+.halo::before,
+.halo::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--glow) 60%, white);
+  opacity: 0;
+}
+
+.halo::before { left: 28%; top: 38%; }
+.halo::after { right: 26%; top: 22%; }
+
+.creature:is([data-mood="think"], [data-mood="write"], [data-mood="code"], [data-mood="paint"], [data-mood="search"]) .halo {
+  opacity: 1;
+  animation: halo-pulse 1.4s ease-in-out infinite;
+}
+
+.creature:is([data-mood="think"], [data-mood="write"], [data-mood="code"], [data-mood="paint"], [data-mood="search"]) .halo::before {
+  opacity: 1;
+  animation: spark 1.1s ease-in-out infinite;
+}
+
+.creature:is([data-mood="think"], [data-mood="write"], [data-mood="code"], [data-mood="paint"], [data-mood="search"]) .halo::after {
+  opacity: 1;
+  animation: spark 1.1s ease-in-out 0.35s infinite;
+}
+
+/* Ears tuck behind the header's top edge. */
+.ears {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  height: 28px;
+  margin: 0 calc(var(--gutter) + 18px) -9px;
+  -webkit-app-region: drag;
+}
+
+.ear {
+  position: absolute;
+  bottom: 0;
+  width: 30px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--glow) 26%, var(--ear)), color-mix(in srgb, var(--skin) 70%, var(--fur)));
+  box-shadow: var(--shine);
+  transition: transform var(--mid) var(--spring);
+}
+
+.ear.left {
+  left: 0;
+  border-radius: 70% 40% 0 0 / 100% 70% 0 0;
+  transform: rotate(-14deg);
+  transform-origin: 80% 100%;
+}
+
+.ear.right {
+  right: 0;
+  border-radius: 40% 70% 0 0 / 70% 100% 0 0;
+  transform: rotate(14deg);
+  transform-origin: 20% 100%;
+}
+
+.creature:has(.head:hover)[data-mood="idle"] .ear.left { transform: rotate(-22deg) translateY(-1px); }
+.creature:has(.head:hover)[data-mood="idle"] .ear.right { transform: rotate(22deg) translateY(-1px); }
+
+body[data-compact="1"] .ears,
+body[data-compact="1"] .halo {
+  display: none;
+}
+
+.eyes {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+}
+
+.eye {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--quiet) 55%, var(--hide));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 0 3px color-mix(in srgb, var(--glow) 16%, transparent);
+  transition: background var(--mid) ease, box-shadow var(--mid) ease, transform var(--mid) var(--spring), border-radius var(--mid) ease;
+}
+
+.eye i {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #0b0f0d;
+  box-shadow: inset -2px -2px 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.eyes:not([data-mood="idle"]) .eye {
+  box-shadow: 0 0 12px var(--glow-dim), 0 0 0 3px color-mix(in srgb, var(--glow) 22%, transparent);
+}
+
+.eyes[data-mood="idle"] .eye { animation: idle-blink 6s ease-in-out infinite; }
+.eyes[data-mood="think"] .eye { background: var(--mood-think); animation: blink 1.1s infinite; }
+.eyes[data-mood="think"] .eye i { animation: pupil-scan 1.4s ease-in-out infinite; }
+.eyes[data-mood="write"] .eye { background: var(--mood-write); animation: type-blink 0.22s steps(2, end) infinite; }
+.eyes[data-mood="write"] .eye i { left: 5px; right: 5px; border-radius: 1px; }
+.eyes[data-mood="code"] .eye { background: var(--mood-code); border-radius: 3px; animation: code-flicker 0.35s steps(3, end) infinite; }
+.eyes[data-mood="code"] .eye i { inset: 0; border-radius: 0; box-shadow: none; background: repeating-linear-gradient(to bottom, rgba(8, 20, 24, 0.2) 0 2px, transparent 2px 4px); }
+.eyes[data-mood="paint"] .eye { background: var(--mood-paint); animation: paint-spin 1.6s linear infinite; }
+.eyes[data-mood="search"] .eye { background: var(--mood-search); }
+.eyes[data-mood="search"] .eye i { animation: pupil-radar 1.8s linear infinite; }
+.eyes[data-mood="desk"] .eye { background: var(--mood-desk); transform: scaleY(0.45); }
+.eyes[data-mood="tool"] .eye { background: var(--mood-tool); }
+
+/* Ears move with the mood. */
+.creature:is([data-mood="think"], [data-mood="search"]) .ear.left { animation: ear-perk-left 0.7s ease-in-out infinite; }
+.creature:is([data-mood="think"], [data-mood="search"]) .ear.right { animation: ear-perk-right 0.7s ease-in-out 0.12s infinite; }
+.creature[data-mood="write"] .ear { animation: ear-tap 0.28s ease-in-out infinite; }
+.creature[data-mood="code"] .ear { animation: ear-tap 0.4s ease-in-out infinite; }
+.creature[data-mood="paint"] .ear.left { animation: ear-swish-left 1.1s ease-in-out infinite; }
+.creature[data-mood="paint"] .ear.right { animation: ear-swish-right 1.1s ease-in-out infinite; }

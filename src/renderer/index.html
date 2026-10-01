@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en" data-theme="den">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; child-src 'none'; form-action 'none'" />
+    <title>Nova Collar</title>
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <link rel="stylesheet" href="base.css" />
+    <link rel="stylesheet" href="themes.css" />
+    <link rel="stylesheet" href="shell.css" />
+    <link rel="stylesheet" href="creature.css" />
+    <link rel="stylesheet" href="panels.css" />
+    <link rel="stylesheet" href="sheets.css" />
+    <link rel="stylesheet" href="chat.css" />
+    <link rel="stylesheet" href="steps.css" />
+    <link rel="stylesheet" href="dock.css" />
+    <link rel="stylesheet" href="crew.css" />
+    <link rel="stylesheet" href="overlays.css" />
+    <link rel="stylesheet" href="motion.css" />
+  </head>
+  <body>
+    <div class="creature" id="creature" data-mood="idle">
+      <div class="spine" id="spine" title="Drag up or down to scroll. Drag toward the edge to make it thinner."><i id="spine-thumb"></i></div>
+      <div class="atmosphere" aria-hidden="true"><i></i><i></i><b></b></div>
+      <div class="veil" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="halo" aria-hidden="true"></div>
+      <div class="ears" aria-hidden="true">
+        <i class="ear left"></i>
+        <i class="ear right"></i>
+      </div>
+      <header class="head">
+        <div class="id">
+          <div class="eyes" id="eyes" data-mood="idle">
+            <span class="eye"><i></i></span>
+            <span class="eye"><i></i></span>
+          </div>
+          <strong class="brand" id="brand" title="Nova Collar">Nova Collar</strong>
+          <div class="who">
+            <button type="button" id="crew-tag" class="crew-tag" hidden></button>
+            <button type="button" id="goal-tag" class="goal-tag" hidden></button>
+            <button type="button" id="model-btn" class="model" title="Switch model">Local 3.8</button>
+          </div>
+          <button type="button" id="home-fold" class="home-fold" aria-expanded="true" title="Hide the bar"></button>
+          <div class="win">
+            <button type="button" id="min" title="Minimize">–</button>
+            <button type="button" id="quit" title="Close">×</button>
+          </div>
+        </div>
+        <nav class="bits" id="home-bar" aria-label="Window">
+          <button type="button" id="crew-btn" title="People who share a job">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M16 14.2c2.3-.2 4 1.3 4.6 4.3" /></svg>
+            <span>crew</span>
+          </button>
+          <button type="button" id="sense-btn" title="What the last turns missed">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" /></svg>
+            <span>notes</span>
+          </button>
+          <button type="button" id="chats-btn" title="Chats">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12.5a2.5 2.5 0 0 1-2.5 2.5H9l-5 4V5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5z" /></svg>
+            <span>chats</span>
+          </button>
+          <button type="button" id="spec-btn" title="Write a spec with the model">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+            <span>spec</span>
+          </button>
+          <button type="button" id="pin" title="Keep on top">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z" /><path d="M12 14v6" /></svg>
+            <span>pin</span>
+          </button>
+          <button type="button" id="term-btn" title="Show or hide the terminal">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M7 9l3 3-3 3M13 15h4" /></svg>
+            <span>term</span>
+          </button>
+          <button type="button" id="settings-btn" title="Personality and theme">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" /></svg>
+            <span>settings</span>
+          </button>
+        </nav>
+      </header>
+      <div class="notice" id="notice" hidden>
+        <p><strong id="notice-title"></strong><span id="notice-body"></span></p>
+        <button type="button" id="notice-open">open</button>
+        <button type="button" id="notice-dismiss">dismiss</button>
+      </div>
+      <div class="drawers" id="drawers">
+        <section class="drawer" id="drawer-machines">
+          <button type="button" class="drawer-toggle" data-drawer="machines" aria-expanded="false">Machines</button>
+          <nav class="packs" id="packs-machines" aria-label="Machine packs"></nav>
+        </section>
+        <section class="drawer" id="drawer-work">
+          <button type="button" class="drawer-toggle" data-drawer="work" aria-expanded="false">Work</button>
+          <nav class="packs" id="packs-work" aria-label="Work packs"></nav>
+        </section>
+      </div>
+      <div class="now" id="now" hidden>
+        <i class="now-orb"></i>
+        <b id="now-word">working</b>
+        <span class="now-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
+      <div class="sheet" id="models" hidden>
+        <div class="sheet-head">
+          <strong>model</strong>
+          <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <div class="sheet-list" id="models-list"></div>
+      </div>
+      <div class="sheet" id="settings" hidden>
+        <div class="sheet-head">
+          <strong>settings</strong>
+          <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <p class="sheet-sub">personality</p>
+        <p class="sheet-note" id="voice-now">How I talk.</p>
+        <form class="dossier" id="voice-form">
+          <label>describe a voice, or write the whole thing
+            <textarea id="voice-wish" rows="3" maxlength="800" placeholder="Warm, sharp, a little feral. Or paste the whole personality."></textarea>
+          </label>
+          <button type="button" id="voice-make">make four voices</button>
+        </form>
+        <div class="sheet-list" id="voice-list"></div>
+        <p class="sheet-sub">theme</p>
+        <div class="sheet-list" id="themes-list"></div>
+      </div>
+      <div class="sheet page" id="crew" hidden>
+        <div class="sheet-head">
+          <strong>crew</strong>
+          <button type="button" id="task-new">new task</button>
+          <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <p class="sheet-note">A task is the work. Pick someone, or make someone for it. Ask from the chat and it can assign one too. When the goal is met, it comes back here and in that person's chat.</p>
+        <div class="kanban" id="kanban" aria-label="Tasks"></div>
+        <details class="fold">
+          <summary>people</summary>
+          <div class="hire" id="crew-hire"></div>
+          <div class="roster" id="crew-list"></div>
+          <button type="button" id="crew-new" class="fold-act">write one</button>
+        </details>
+        <details class="fold">
+          <summary>learned</summary>
+          <div class="roster" id="pack-learn"></div>
+        </details>
+      </div>
+      <div class="sheet page" id="task-edit" hidden>
+        <div class="sheet-head">
+          <strong>task</strong>
+          <button type="button" id="task-save">assign</button>
+          <button type="button" class="sheet-x" data-back="crew" title="Back to crew" aria-label="Back to crew">×</button>
+        </div>
+        <p class="sheet-note">Say what needs doing and what done looks like. Then choose who holds it.</p>
+        <form class="dossier" id="task-form">
+          <label>task
+            <textarea id="task-title" rows="3" maxlength="240" placeholder="The thing that will take a while"></textarea>
+          </label>
+          <label>goal <input id="task-goal" maxlength="240" placeholder="What done looks like" autocomplete="off" /></label>
+          <label>every
+            <select id="task-every">
+              <option value="0">once</option>
+              <option value="1">every minute</option>
+              <option value="3">every 3 minutes</option>
+            </select>
+          </label>
+          <label>who
+            <select id="task-bot"></select>
+          </label>
+          <details class="fold" id="task-member">
+            <summary>new member</summary>
+            <label>name <input id="task-name" maxlength="32" placeholder="Scout" autocomplete="off" /></label>
+            <label>job title <input id="task-job" maxlength="80" placeholder="what they own" autocomplete="off" /></label>
+            <label>role
+              <textarea id="task-role" rows="4" placeholder="How they work. What they never do without asking."></textarea>
+            </label>
+            <label>voice <input id="task-voice" maxlength="240" placeholder="first line is the result" autocomplete="off" /></label>
+            <label>tools
+              <select id="task-pack">
+                <option value="">auto</option>
+              </select>
+            </label>
+          </details>
+        </form>
+      </div>
+      <div class="sheet page" id="crew-edit" hidden>
+        <div class="sheet-head">
+          <strong id="crew-edit-label">new operator</strong>
+          <button type="button" id="crew-save">save</button>
+          <button type="button" class="sheet-x" data-back="crew" title="Back to crew" aria-label="Back to crew">×</button>
+        </div>
+        <p class="sheet-note">Teach them the job in the role box. House law (harness, facts, ask-first) is already on. Playbooks fill a strong start.</p>
+        <div class="hire" id="dossier-hire"></div>
+        <form class="dossier" id="crew-form">
+          <label>name <input id="bot-name" maxlength="32" placeholder="Scout" autocomplete="off" /></label>
+          <label>job title <input id="bot-title" maxlength="80" placeholder="HNL computer" autocomplete="off" /></label>
+          <label>role — what they own, how they work, what they never do
+            <textarea id="bot-role" rows="6" placeholder="Own this outcome. How you work. What you never do without asking."></textarea>
+          </label>
+          <label>voice <input id="bot-voice" maxlength="240" placeholder="first line is the result. Evidence first." autocomplete="off" /></label>
+          <label>tools
+            <select id="bot-pack">
+              <option value="">auto</option>
+            </select>
+          </label>
+          <label>ask first <input id="bot-ask" maxlength="400" placeholder="deletes, spend, mail, leaving the box" autocomplete="off" /></label>
+          <label>starters — one per line, shown as task chips
+            <textarea id="bot-starts" rows="3" placeholder="What's on the HNL desktop?"></textarea>
+          </label>
+          <input type="hidden" id="bot-playbook" value="" />
+        </form>
+        <button type="button" id="crew-delete" class="danger" hidden>delete</button>
+      </div>
+      <div class="sheet" id="sense" hidden>
+        <div class="sheet-head">
+          <strong>notes</strong>
+          <button type="button" id="sense-now" title="Review the last turn now">read</button>
+          <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <p class="sheet-note">What this window learned about its own work. It grades every turn, keeps the habits that help, and drops the ones that don’t — so each chat starts a little sharper. Tap <b>read</b> to re-grade the last turn now.</p>
+        <div class="sense-block focus">
+          <b>focus now</b>
+          <p id="sense-intent">House sense is empty until a turn lands.</p>
+        </div>
+        <div class="sense-block">
+          <b>misses</b>
+          <span class="sense-cap">Where it slipped last turn — a claim it didn’t check or couldn’t back up.</span>
+          <ul id="sense-misses"></ul>
+        </div>
+        <div class="sense-block">
+          <b>friction</b>
+          <span class="sense-cap">Patterns that keep tripping it up. The things to avoid.</span>
+          <ul id="sense-friction"></ul>
+        </div>
+        <div class="sense-block">
+          <b>next time</b>
+          <span class="sense-cap">Rules it will try to follow on the next turn.</span>
+          <ul id="sense-next"></ul>
+        </div>
+        <p class="empty" id="sense-meta"></p>
+        <p class="sense-cap sense-legend">source of the notes · pain = how rough the last turn was (0–10) · streak = clean turns in a row · when it last reviewed.</p>
+      </div>
+      <div class="sheet" id="chats" hidden>
+        <div class="sheet-head">
+          <strong>chats</strong>
+          <button type="button" id="new-chat">new</button>
+          <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <div class="sheet-list" id="chats-list"></div>
+      </div>
+      <div class="sheet page" id="spec" hidden>
+        <div class="sheet-head">
+          <strong>spec</strong>
+          <span class="spec-hint">tab completes · right-click the cursor · start opens a new chat</span>
+          <button type="button" id="spec-start">start</button>
+          <button type="button" id="spec-copy" title="Copy the whole spec to paste into any chat">copy</button>
+          <button type="button" id="spec-close" class="sheet-x" title="Close" aria-label="Close">×</button>
+        </div>
+        <textarea id="spec-doc" spellcheck="false" placeholder="Write the spec here, section by section. Tab completes from the cursor. Right-click to have the model write at the cursor, replace a highlight, or use the highlight as reference."></textarea>
+        <p class="spec-status" id="spec-status"></p>
+        <div class="spec-menu" id="spec-menu" hidden>
+          <button type="button" data-act="write">Write here…</button>
+          <button type="button" data-act="from">Write from the selection</button>
+          <button type="button" data-act="ref">Use the selection as reference</button>
+          <form id="spec-ask" hidden>
+            <input id="spec-ask-input" placeholder="What should go here" autocomplete="off" />
+            <button type="submit">write</button>
+          </form>
+        </div>
+      </div>
+      <div class="stage" id="stage" data-dock="bottom">
+        <div class="chat-col">
+          <div class="crew-brief" id="crew-brief" hidden>
+            <div class="crew-brief-who">
+              <b id="crew-brief-name"></b>
+              <span id="crew-brief-title"></span>
+            </div>
+            <p id="crew-brief-job"></p>
+            <p id="crew-brief-pack" hidden></p>
+            <div class="starts" id="crew-starts"></div>
+          </div>
+          <section class="face" id="chat"></section>
+        </div>
+        <div class="split" id="split" role="separator" title="Drag to resize"></div>
+        <section class="paws">
+          <div class="pane-bar">
+            <button type="button" class="pane-head" id="term-fold">Terminal</button>
+            <button type="button" id="dock-btn" class="dock-btn" hidden>right</button>
+          </div>
+          <form class="cwd" id="cwd-form">
+            <label for="cwd">dir</label>
+            <input id="cwd" spellcheck="false" autocomplete="off" />
+            <button type="button" id="cwd-pick" title="Choose a folder" aria-label="Choose a folder">
+              <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.8l2 2.2h7.2a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /></svg>
+            </button>
+          </form>
+          <div id="terminal"></div>
+        </section>
+      </div>
+      <footer class="mouth">
+        <div class="say">
+          <button type="button" class="pack-hint" id="pack-hint" hidden></button>
+          <textarea id="input" rows="1" placeholder="Talk to Nova Collar"></textarea>
+        </div>
+        <button type="button" id="send" class="go" title="Send" aria-label="Send">
+          <svg class="i i-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg>
+          <svg class="i i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" /></svg>
+        </button>
+      </footer>
+    </div>
+    <div class="setup" id="setup" hidden>
+      <div class="setup-orb" aria-hidden="true"></div>
+      <p class="setup-kicker" id="setup-kicker"></p>
+      <h1 id="setup-title">Nova Collar</h1>
+      <p id="setup-body"></p>
+      <div id="setup-list"></div>
+      <pre id="setup-log" hidden></pre>
+      <div class="setup-acts" id="setup-acts"></div>
+    </div>
+    <div class="wake" id="wake" hidden>
+      <p>Pick where your model lives, then connect. Local 3.8 needs no key. The tools key is optional — only web search and the remote computer use it.</p>
+      <label>Provider
+        <select id="wake-provider"></select>
+      </label>
+      <p class="wake-note" id="wake-note"></p>
+      <label id="wake-url-row" hidden>Address
+        <input id="wake-url" spellcheck="false" autocomplete="off" placeholder="https://…/v1" />
+      </label>
+      <label id="wake-model-row">Model
+        <input id="wake-model" spellcheck="false" autocomplete="off" list="wake-models" />
+        <datalist id="wake-models"></datalist>
+      </label>
+      <label id="wake-key-row">API key <input id="chat-key" type="password" autocomplete="off" /></label>
+      <label id="wake-tools-row">Tools key, optional <input id="tools-key" type="password" autocomplete="off" /></label>
+      <button type="button" id="wake-btn">Connect</button>
+    </div>
+    <div class="credits" id="credits" hidden>
+      <button type="button" id="credits-close">close</button>
+      <div class="credits-sky">
+        <div class="credits-crawl" id="credits-crawl">
+          <p class="credits-kicker">Hungry Nova Labs</p>
+          <h2>Thank you</h2>
+          <p>Thank you to my wife, who stood by me at my worst and is still giving me the best lessons.</p>
+          <p>Thank you to Nova, our Dalmatian, for always licking my face between bug fixes.</p>
+          <p>Thank you to Gwendoleth (Gwen), Mavis, Opal, and Baron. His full Christian name would not fit here.</p>
+          <p>Thank you to our chickens, who kept us fed through Hurricane Helene, when we had no power and still had eggs. Steve, Warbeak, and Cadbury.</p>
+          <h2>And thank you for the software</h2>
+          <p>These are the licenses on the pieces Nova Collar is built with, and what each one asks of anyone who keeps a copy.</p>
+          <h2>MIT</h2>
+          <p>Electron 36, xterm.js and its fit addon, node-pty, and qrcode are MIT. electron-builder and @electron/rebuild, the tools that package the window, are MIT too.</p>
+          <p>The MIT license lets us use, change, and share them. The duty is to keep the copyright line and the permission notice with any real copy of that software. It is offered as is, with no warranty.</p>
+          <p>Electron’s notice names the Electron contributors and GitHub Inc. xterm.js names the xterm.js authors, SourceLair, and Christopher Jeffrey. node-pty’s notice names Christopher Jeffrey. qrcode names Ryan Day.</p>
+          <h2>Chromium, inside Electron</h2>
+          <p>Electron ships Chromium. Chromium’s own notices travel in the Electron distribution, in LICENSES.chromium.html. The BSD pieces ask that the copyright, the conditions, and the disclaimer stay with the software. Their names are not a stamp of approval for Nova Collar.</p>
+          <h2>Apache 2.0</h2>
+          <p>Laya, the small decision model, starts from convaiinnovations/laya on Hugging Face. That model card is Apache 2.0. Thank you to Convai Innovations for releasing it.</p>
+          <p>The checkpoint in models/laya-np is a modified copy. We trained it on Nova Collar’s job, loop, goal, and audit questions. Apache 2.0 asks us to keep their license, say that the weights were changed, and retain their attribution notices. There is no warranty, and their trademarks are still theirs.</p>
+          <h2>Ollama</h2>
+          <p>If setup installs Ollama, that project is MIT as well. Same duty: keep its copyright and permission notice with the copy. Nova Collar does not ship Ollama inside the window.</p>
+          <p class="credits-end">Own your data. Own your future.</p>
+        </div>
+      </div>
+    </div>
+    <script src="vendor/xterm.js"></script>
+    <script src="vendor/addon-fit.js"></script>
+    <script src="md.js"></script>
+    <script src="steps.js"></script>
+    <script src="credits.js"></script>
+    <script src="setup-ui.js"></script>
+    <script src="crew-render.js"></script>
+    <script src="app.js"></script>
+    <script src="spec-ui.js"></script>
+  </body>
+</html>

@@ -1,0 +1,128 @@
+/* Step cards: one row per tool call. Open one to read what came back. */
+.step {
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--quiet);
+  background: color-mix(in srgb, var(--fur) 70%, transparent);
+  transition: border-color var(--mid) ease, background var(--mid) ease;
+}
+
+.turn .msg.assistant + .step {
+  margin-top: 10px;
+}
+
+.step[open] {
+  background: color-mix(in srgb, var(--fur) 92%, transparent);
+}
+
+.step summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: inherit;
+  list-style: none;
+  cursor: pointer;
+  transition: background var(--fast) ease;
+}
+
+.step summary::-webkit-details-marker {
+  display: none;
+}
+
+.step summary::after {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  opacity: 0.5;
+  transform: rotate(-45deg);
+  transition: transform var(--mid) var(--spring);
+}
+
+.step[open] summary::after {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.step summary:hover {
+  background: var(--wash);
+}
+
+.step .mark {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--quiet);
+}
+
+.step.ok .mark { background: var(--glow); box-shadow: 0 0 8px var(--glow-dim); }
+.step.bad { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.step.bad .mark { background: var(--bad); box-shadow: 0 0 8px color-mix(in srgb, var(--bad) 50%, transparent); }
+.step.busy { border-color: color-mix(in srgb, var(--glow) 35%, var(--line)); }
+.step.busy .mark { background: var(--glow); animation: orb-bounce 0.8s ease-in-out infinite; }
+.step[data-name="watchdog"] { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+
+.step summary b {
+  flex: none;
+  color: var(--quiet);
+  font: 500 11px/1.35 var(--chrome);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+}
+
+.step.bad summary b { color: color-mix(in srgb, var(--bad) 70%, var(--voice)); }
+.step.busy summary b { color: var(--accent); }
+
+.step .blurb {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--quiet);
+  font: 12px/1.4 var(--voice-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step.busy .blurb {
+  background: linear-gradient(90deg, var(--quiet) 30%, var(--voice) 50%, var(--quiet) 70%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 1.4s linear infinite;
+}
+
+.step-body {
+  padding: 0 12px 10px 27px;
+}
+
+.step-body:empty {
+  display: none;
+}
+
+.step-body pre {
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: var(--r-sm);
+  color: color-mix(in srgb, var(--voice) 85%, var(--quiet));
+  background: color-mix(in srgb, var(--paws) 80%, transparent);
+  font: 11px/1.5 var(--chrome);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+
+.step-body img.art {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin-top: 8px;
+  border-radius: var(--r-sm);
+}

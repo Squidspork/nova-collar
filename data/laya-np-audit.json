@@ -1,0 +1,9 @@
+{
+  "type": "choice",
+  "instructions": "Nova Pup is about to answer. It set an internal goal to disprove the opposite of what it wants to say. What should it do?",
+  "criteria": {
+    "held": "a tool result disproves the opposite. This path can be told to the user.",
+    "retry": "the opposite is not disproved. Do not answer. Take a different step or a new path.",
+    "skip": "there is no factual claim to disprove."
+  }
+}

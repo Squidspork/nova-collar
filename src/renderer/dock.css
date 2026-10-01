@@ -1,0 +1,299 @@
+/* Terminal pane, its resize handle, and the composer at the bottom. */
+
+.split {
+  position: relative;
+  flex: 0 0 10px;
+  cursor: row-resize;
+  -webkit-app-region: no-drag;
+}
+
+.split::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line);
+  transform: translate(-50%, -50%);
+  transition: background var(--fast) ease, width var(--mid) var(--ease), height var(--mid) var(--ease), box-shadow var(--fast) ease;
+}
+
+.split:hover::after,
+.split.dragging::after {
+  width: 60px;
+  background: var(--glow);
+  box-shadow: 0 0 10px var(--glow-dim);
+}
+
+.stage[data-dock="side"] .split {
+  cursor: col-resize;
+}
+
+.stage[data-dock="side"] .split::after {
+  width: 4px;
+  height: 36px;
+}
+
+.stage[data-dock="side"] .split:hover::after,
+.stage[data-dock="side"] .split.dragging::after {
+  width: 4px;
+  height: 60px;
+}
+
+.paws {
+  display: flex;
+  flex: 0 0 var(--term);
+  flex-direction: column;
+  min-width: 120px;
+  min-height: 72px;
+  margin: 0 var(--gutter) 8px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--paws);
+  box-shadow: var(--shine);
+}
+
+.stage[data-dock="side"] .paws {
+  margin-left: 0;
+}
+
+.stage[data-term="off"] :is(.split, .cwd, #terminal) {
+  display: none;
+}
+
+.stage[data-term="off"] .paws {
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-top: 6px;
+}
+
+.pane-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}
+
+.pane-head {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 2px;
+  color: var(--quiet);
+  font: 600 10.5px/1 var(--chrome);
+  letter-spacing: 0.12em;
+  text-align: left;
+  text-transform: uppercase;
+  transition: color var(--fast) ease;
+}
+
+.pane-head:hover {
+  color: var(--voice);
+}
+
+.dock-btn {
+  flex: none;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  color: var(--quiet);
+  background: var(--wash);
+  font: 600 10px/1 var(--chrome);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.dock-btn:hover {
+  color: var(--voice);
+  background: var(--wash-hi);
+}
+
+.stage[data-term="off"] .dock-btn {
+  display: none;
+}
+
+.cwd {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.cwd label {
+  color: var(--quiet);
+  font: 600 10px/1 var(--chrome);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cwd input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  outline: none;
+  color: var(--voice);
+  background: color-mix(in srgb, var(--hide) 50%, transparent);
+  font: 11px/1 var(--chrome);
+  transition: border-color var(--fast) ease, box-shadow var(--fast) ease;
+}
+
+.cwd input:focus {
+  border-color: color-mix(in srgb, var(--glow) 55%, var(--line));
+  box-shadow: var(--ring);
+}
+
+.cwd.bad input {
+  border-color: var(--bad);
+}
+
+.cwd button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--quiet);
+  background: var(--wash);
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.cwd button:hover {
+  color: var(--voice);
+  background: var(--wash-hi);
+}
+
+#terminal {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 6px;
+}
+
+.mouth {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  margin: 2px var(--gutter) 12px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--skin) 60%, var(--fur)), var(--fur));
+  box-shadow: var(--shine), var(--lift);
+  transition: border-color var(--mid) ease, box-shadow var(--mid) ease;
+}
+
+.mouth:focus-within {
+  border-color: color-mix(in srgb, var(--glow) 60%, var(--line));
+  box-shadow: var(--shine), var(--lift), 0 0 0 4px var(--glow-dim);
+}
+
+.say {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mouth textarea {
+  width: 100%;
+  min-height: calc(36px * var(--u));
+  max-height: calc(140px * var(--u));
+  padding: calc(8px * var(--u)) 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  color: var(--voice);
+  background: transparent;
+  font: var(--voice-size)/1.5 var(--voice-font);
+  box-shadow: none;
+}
+
+.pack-hint {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  color: var(--glow);
+  background: var(--tint);
+  font: 11px/1.2 var(--chrome);
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.pack-hint:hover {
+  color: var(--voice);
+  background: var(--tint-hi);
+}
+
+.mouth button.go {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--go-ink);
+  background: var(--glow);
+  box-shadow: 0 8px 20px -8px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform var(--fast) var(--spring), box-shadow var(--mid) ease, background var(--mid) ease, color var(--mid) ease;
+}
+
+.mouth button.go svg {
+  grid-area: 1 / 1;
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.4;
+  transition: transform var(--mid) var(--spring), opacity var(--fast) ease;
+}
+
+.mouth button.go .i-stop,
+.mouth button.go.stop .i-send {
+  opacity: 0;
+  transform: scale(0.4) rotate(-90deg);
+}
+
+.mouth button.go.stop .i-stop {
+  opacity: 1;
+  transform: none;
+}
+
+.mouth button.go:hover {
+  transform: translateY(-1px) scale(1.05);
+}
+
+.mouth button.go:active {
+  transform: scale(0.93);
+}
+
+.mouth button.go.stop {
+  color: #2a0f14;
+  background: var(--bad);
+  box-shadow: 0 8px 20px -8px var(--bad);
+}
+
+.mouth button.go.stop::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 2px solid transparent;
+  border-top-color: var(--bad);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}

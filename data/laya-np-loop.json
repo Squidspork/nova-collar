@@ -1,0 +1,8 @@
+{
+  "type": "choice",
+  "instructions": "Is Nova Pup about to repeat itself?",
+  "criteria": {
+    "go": "the next call is a new step, or a check after something changed, or the user asked for another look",
+    "stop": "the same tool and arguments already ran and another call will not help"
+  }
+}

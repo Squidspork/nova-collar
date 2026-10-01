@@ -1,0 +1,20 @@
+{
+  "updated": 0,
+  "source": "seed",
+  "turns": 0,
+  "intent": "Finish the job in this window. Fast HNL tool. Compile and run before claiming done.",
+  "friction": [
+    "Died mid-job with a loop or Stopped line instead of a result.",
+    "Had to be asked if the work was done.",
+    "Claimed a fix that was not on disk or did not compile.",
+    "Lost the stack (Go vs Python) after a clear correction.",
+    "Rewrote a file or the verifier instead of a small patch."
+  ],
+  "next": [
+    "Answer with status first, then tools.",
+    "One read, then act. Do not page a file with sed.",
+    "Smallest edit. Wait for harness compile and run before claiming done.",
+    "After a correction, restate the goal in one line and follow it.",
+    "Do not expand the harness or other verifiers."
+  ]
+}

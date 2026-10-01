@@ -1,0 +1,224 @@
+/* What opens under the header: notices, pack drawers, the busy bar, and list sheets. */
+
+.notice {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 8px var(--gutter) 0;
+  padding: 8px 8px 8px 12px;
+  overflow: clip;
+  border: 1px solid color-mix(in srgb, var(--glow) 26%, var(--line));
+  border-radius: var(--r-md);
+  background: linear-gradient(100deg, var(--tint), color-mix(in srgb, var(--fur) 82%, transparent));
+  box-shadow: var(--shine);
+}
+
+.notice p {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  color: var(--quiet);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.notice strong {
+  color: var(--voice);
+  font-weight: 650;
+}
+
+.notice button + button {
+  color: var(--quiet);
+  background: transparent;
+}
+
+.notice button + button:hover {
+  color: var(--voice);
+  background: var(--wash-hi);
+}
+
+.notice {
+  border-color: color-mix(in srgb, var(--token) 40%, var(--line));
+  background: linear-gradient(100deg, color-mix(in srgb, var(--token) 14%, transparent), color-mix(in srgb, var(--fur) 82%, transparent));
+}
+
+.notice strong,
+.notice span {
+  display: block;
+}
+
+.notice span {
+  color: color-mix(in srgb, var(--voice) 78%, var(--quiet));
+}
+
+.notice button:first-of-type {
+  color: var(--token);
+  background: color-mix(in srgb, var(--token) 14%, transparent);
+}
+
+.notice button:first-of-type:hover {
+  background: color-mix(in srgb, var(--token) 26%, transparent);
+}
+
+/* Pack drawers: the toggles share one row; open chips drop below it. */
+.drawers {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin: 8px var(--gutter) 0;
+}
+
+.drawer {
+  display: contents;
+}
+
+.drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px 0 9px;
+  border-radius: var(--r-pill);
+  color: var(--quiet);
+  font: 600 10.5px/1 var(--chrome);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.drawer-toggle::before,
+.pane-head::before,
+.fold summary::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+  transition: transform var(--mid) var(--spring);
+}
+
+.drawer.open .drawer-toggle::before,
+.stage[data-term="on"] .pane-head::before,
+.fold[open] summary::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.drawer-toggle:hover,
+.drawer.open .drawer-toggle {
+  color: var(--voice);
+  background: var(--wash);
+}
+
+.drawer .packs {
+  order: 1;
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 2px 4px;
+}
+
+.drawer:not(.open) .packs {
+  display: none;
+}
+
+.packs button {
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--quiet);
+  background: color-mix(in srgb, var(--fur) 70%, transparent);
+  font: 11px/1 var(--chrome);
+  text-transform: lowercase;
+  transition: background var(--fast) ease, color var(--fast) ease, border-color var(--fast) ease, transform var(--fast) var(--ease), box-shadow var(--mid) ease;
+}
+
+.packs button:hover {
+  color: var(--voice);
+  border-color: color-mix(in srgb, var(--glow) 45%, var(--line));
+  transform: translateY(-1px);
+}
+
+.packs button.on {
+  color: var(--go-ink);
+  border-color: var(--glow);
+  background: var(--glow);
+  box-shadow: 0 6px 16px -8px var(--glow);
+}
+
+/* Busy bar: the mood color drives the dot, the word, and a moving shine. */
+.now {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px var(--gutter) 0;
+  padding: 7px 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: var(--r-pill);
+  color: var(--mood-think);
+  background: color-mix(in srgb, currentColor 9%, var(--fur));
+}
+
+.now::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, currentColor 18%, transparent) 50%, transparent 80%);
+  animation: shimmer 1.8s var(--ease) infinite;
+  pointer-events: none;
+}
+
+.now-orb {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: orb-bounce 0.8s ease-in-out infinite;
+}
+
+.now b {
+  font: 600 11px/1.2 var(--chrome);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.now-dots {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.now-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: dot-pop 0.9s ease-in-out infinite;
+}
+
+.now-dots i:nth-child(2) { animation-delay: 0.15s; }
+.now-dots i:nth-child(3) { animation-delay: 0.3s; }
+.now[data-mood="write"] { color: var(--mood-write); }
+.now[data-mood="code"] { color: var(--mood-code); }
+.now[data-mood="search"] { color: var(--mood-search); }
+.now[data-mood="paint"] { color: var(--mood-paint); }
+.now[data-mood="desk"] { color: var(--mood-desk); }
+.now[data-mood="tool"] { color: var(--mood-tool); }
