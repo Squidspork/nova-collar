@@ -6,7 +6,7 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
-**The Mac app.** Signed, notarized builds go to [Releases](https://github.com/Squidspork/nova-collar/releases) as they are cut. Download the `.dmg`, drag Nova Collar to `/Applications`, and open it. Apple Silicon, macOS only.
+**The Mac app.** Signed, notarized builds go to [Releases](https://github.com/Squidspork/nova-collar/releases) as they are cut. Download the `.dmg`, drag Nova Collar to `/Applications`, and open it. For Apple Silicon Macs running macOS 12 or newer. Windows x64 builds are also available; see below.
 
 To build it yourself from the checkout:
 
@@ -23,7 +23,20 @@ The app lands at `dist/mac-arm64/Nova Collar.app`. Drag it to `/Applications` an
 curl -fsSL https://raw.githubusercontent.com/Squidspork/nova-collar/main/scripts/get-collar.sh | sh
 ```
 
-Clone it and run `scripts/get-collar.sh` from the checkout, or run the one line above. Either way it lands in `~/NovaCollar`, installs the dependencies, and puts `nova-collar` and `np` on your PATH. It does not pick a model for you. I do not have a Windows package yet.
+Clone it and run `scripts/get-collar.sh` from the checkout, or run the one line above. Either way it lands in `~/NovaCollar`, installs the dependencies, and puts `nova-collar` and `np` on your PATH. It does not pick a model for you.
+
+**Windows x64.** Download `Nova-Collar-0.2.2-x64.exe` from [Releases](https://github.com/Squidspork/nova-collar/releases/latest), run the installer, and open Nova Collar from the Start menu. Tested on Windows 11. Electron requires Windows 10 1809 or newer; Windows 10 has not been tested in this release.
+
+To build the Windows installer from source, use Node.js 22.12 or newer:
+
+```powershell
+npm ci
+npm run release:win
+```
+
+Run `dist/Nova-Collar-0.2.2-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
+
+For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 
 ```bash
 nova-collar install     # show this computer's memory, ask where answers come from
@@ -37,10 +50,10 @@ nova-collar update laya # fetch the optional decider and set up its Python
 
 Nova Collar is model-agnostic, and the window makes the connection the first thing you do. Choose a provider, paste your key, and connect:
 
-- **Hungry Nova Labs** — paste the key we gave you and connect. One key fills both the fast and thinking roles. The customer models are `nova-pup:4b`, `muse`, and `nova-pup:118b`.
+- **Hungry Nova Labs** — paste the key we gave you and connect. One key fills both the fast and thinking roles. Use `nova-pup:4b` for tool work and `nova-pup:27b` for planning and checking. The **4B + 27B** option configures both roles. Refresh the provider model list for the models available to your account.
 - **OpenAI, OpenRouter, Groq** — your own key; the address is already filled in, and common model names are offered.
 - **Custom (OpenAI-compatible)** — any https endpoint you paste, with your own key and model.
-- **On this Mac** — scan for a local server you already run (Ollama or LM Studio). No key needed.
+- **On this computer** — scan for a local server you already run (Ollama or LM Studio). No key needed.
 
 That is the whole connection. If I set up Nova Collar on another computer and hand someone a key, the window connects and starts working — no files to edit, nothing else to wire.
 
@@ -48,10 +61,22 @@ That is the whole connection. If I set up Nova Collar on another computer and ha
 
 - `HNL_FAST_MODEL` / `HNL_FAST_URL` — the fast model works the harness on this computer.
 - `HNL_THINK_MODEL` / `HNL_THINK_URL` — the thinking model forms the plan and checks what the work turned up.
-- Leave both lanes blank and the one chat model does the whole turn. Give it two different models and the split turns on.
+- Leave both lanes blank and the one chat model does the whole turn. Give it two different models or endpoints and the split turns on.
 - A lane can carry its own key with `HNL_FAST_KEY` / `HNL_THINK_KEY`. Leave those blank and the lane borrows the chat key, so a single key can drive both lanes.
 
 Search is bring-your-own; Nova Collar does not ship web search, page extract, or docs search. On a Mac, to let the window see and drive the screen, grant it Accessibility and Screen Recording when macOS asks. Windows and Linux do not have that screen control.
+
+## Approval before risky actions
+
+Nova Collar asks before broad file replacements, emptying an existing file, writes outside the working folder, changes to standing instructions, shell commands that are not recognized as read-only, agent typing in the terminal, and actions that change remote applications or containers. The dialog shows the action, path or command, reason, and a content preview for file writes. Choose **Allow once** or **Deny**. Approval covers that one action; if the file changes while the dialog is open, the agent must read it again.
+
+These checks also cover sub-agents, background work, and automatic harness execution. A denied request stops the current task. Requests expire after ten minutes, and contexts without an approval handler deny them. These are application-level checks, not an operating-system sandbox; approving a shell command authorizes the effects of that command. Small edits inside the working folder can proceed without a dialog.
+
+## Release findings and development
+
+[0.2.2 release notes](CHANGELOG.md) record the Windows findings and fixes shared with Mac. Local and hosted connections stay explicit, the smaller model gets a bounded tool loop, and success claims must follow tool evidence. Windows has PowerShell, file, host, network, and Docker tools; native screen control remains Mac-only. Docker requires a running Docker engine.
+
+For a source checkout, use Node.js 22.12 or newer, `npm ci`, then `npm test`. Tests isolate app settings in temporary folders and do not require a model server or GPU. CI runs the common suites on Mac and Windows, with Windows host-command checks and additional Mac harness checks. Mac release builds need Xcode command-line tools, a Developer ID certificate, and Apple notarization credentials; see [release instructions](docs/releasing.md).
 
 ## How a turn works
 

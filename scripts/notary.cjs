@@ -1,17 +1,21 @@
 // Shared Apple notarization helpers for the electron-builder hooks.
 // Credentials come from the environment (App Store Connect API key preferred):
 //   APPLE_API_KEY=/path/to/AuthKey_XXXX.p8  APPLE_API_KEY_ID=XXXX  APPLE_API_ISSUER=<uuid>
+//   or  APPLE_KEYCHAIN_PROFILE=<notarytool-profile>
+//   Individual API keys: omit issuer and set APPLE_API_KEY_INDIVIDUAL=1.
 //   or  APPLE_ID=<email>  APPLE_APP_SPECIFIC_PASSWORD=<pw>  APPLE_TEAM_ID=<team>
 const { execFileSync } = require("node:child_process");
 
 // notarytool auth arguments, or null when no full credential set is present.
 function authArgs() {
+  if (process.env.APPLE_KEYCHAIN_PROFILE) return ["--keychain-profile", process.env.APPLE_KEYCHAIN_PROFILE];
   const keyPath = process.env.APPLE_API_KEY;
   const keyId = process.env.APPLE_API_KEY_ID;
   const issuer = process.env.APPLE_API_ISSUER;
   if (keyPath && keyId && issuer) {
     return ["--key", keyPath, "--key-id", keyId, "--issuer", issuer];
   }
+  if (keyPath && keyId && process.env.APPLE_API_KEY_INDIVIDUAL === "1") return ["--key", keyPath, "--key-id", keyId];
   const appleId = process.env.APPLE_ID;
   const password = process.env.APPLE_APP_SPECIFIC_PASSWORD;
   const teamId = process.env.APPLE_TEAM_ID;

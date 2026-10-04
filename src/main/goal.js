@@ -503,7 +503,10 @@ export function planAudit({ claim = "", goal = "", trail = [], failure = "", che
   const text = String(claim || "").trim();
   const steps = Array.isArray(trail) ? trail : [];
   const fileDone = FILE_CLAIM.test(text) && steps.some((row) => row && row.ok !== false && FILE_ACT.test(String(row.name || "")));
-  const proven = checked || fileDone || steps.some((row) => row && row.ok !== false && CHECK.test(String(row.name || "")));
+  const emptyClaim = /\b(?:file is (?:now )?empty|emptied|zero[- ]byte|0 bytes)\b/i.test(text);
+  const emptyVerified = emptyClaim && steps.some((row, i) => row?.name === "host_file_read" && row.ok !== false && row.filePath && row.fileBytes === 0
+    && steps.slice(0, i).some((write) => write?.name === "host_file_write" && write.ok !== false && write.filePath === row.filePath && write.fileBytes === 0));
+  const proven = checked || fileDone || emptyVerified || steps.some((row) => row && row.ok !== false && CHECK.test(String(row.name || "")));
   const failed = steps.some((row) => row && row.ok === false && CHECK.test(String(row.name || "")));
   if (/\bstopped\b/i.test(text) && (String(goal || "").trim() || String(failure || "").trim())) {
     const internalGoal = String(failure || "").trim()
@@ -571,6 +574,6 @@ export function auditNudge({ opposite, internalGoal, goal }) {
 }
 
 export function unprovenAnswer(draft, opposite) {
-  const body = String(draft || "").trim();
-  return `Not proven. I could not disprove the opposite: ${opposite}\n\n${body}`.slice(0, 4000);
+  const body = String(draft || "").trim().replace(/^\s*PASS\b.*$/gmi, "Verification incomplete.");
+  return `Not proven. The available checks did not confirm the result.\n\n${body}`.slice(0, 4000);
 }

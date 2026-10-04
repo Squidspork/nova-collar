@@ -84,7 +84,7 @@ export function applyEndpoint({ url, model, chatKey } = {}) {
 export function applyFound(hit, modelName) {
   const model = String(modelName || hit?.models?.[0] || "").trim();
   if (!hit || !model) return { ok: false, error: "Pick a model from the list." };
-  if (hit.kind === "ollama") {
+  if (allowServiceUrl(hit.url, "local")) {
     const cfg = saveLocalModel({ url: hit.url, model });
     markSetupDone();
     return { ok: true, model: cfg.model, localModel: cfg.localModel, url: cfg.localUrl };

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pup", {
   state: () => ipcRenderer.invoke("state"),
+  resolveApproval: (id, allowed) => ipcRenderer.invoke("approval:resolve", { id, allowed }),
   saveKeys: (keys) => ipcRenderer.invoke("keys", keys),
   pin: (on) => ipcRenderer.invoke("pin", on),
   openSettings: () => ipcRenderer.invoke("open-settings"),
@@ -22,6 +23,8 @@ contextBridge.exposeInMainWorld("pup", {
   grow: (size) => ipcRenderer.invoke("window-grow", size),
   setWorkdir: (path) => ipcRenderer.invoke("workdir:set", path),
   pickWorkdir: () => ipcRenderer.invoke("workdir:pick"),
+  refreshModels: () => ipcRenderer.invoke("models:scan"),
+  useHostedPair: () => ipcRenderer.invoke("models:hosted-pair"),
   setModel: (id) => ipcRenderer.invoke("model", id),
   setLane: (lane, model) => ipcRenderer.invoke("model:lane", { lane, model }),
   bots: () => ipcRenderer.invoke("bots:list"),

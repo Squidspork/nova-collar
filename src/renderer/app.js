@@ -154,7 +154,8 @@ function modelLabel(id, list) {
 }
 
 function showModel(id, list, split) {
-  modelBtn.textContent = split?.on ? "fast · think" : modelLabel(id, list);
+  modelBtn.textContent = split?.on ? `${split.fast} + ${split.think}` : modelLabel(id, list);
+  modelBtn.title = split?.on ? `Fast: ${split.fast} · Thinking: ${split.think}` : modelLabel(id, list);
 }
 
 function paintPackHint() {
@@ -256,29 +257,30 @@ function laneOptions(state, current) {
 
 function renderModels(state) {
   modelsList.innerHTML = "";
-
-  const chatHead = document.createElement("p");
-  chatHead.className = "sheet-sub";
-  chatHead.textContent = "chat model";
-  modelsList.append(chatHead);
-
-  for (const row of state.models || []) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chat-item";
-    if (row.id === state.model) btn.classList.add("current");
-    const title = document.createElement("span");
-    title.textContent = row.label || row.id;
-    const hint = document.createElement("em");
-    hint.textContent = row.hint || "";
-    btn.append(title, hint);
-    btn.onclick = async () => {
-      if (busy) return;
-      const next = await window.pup.setModel(row.id);
-      showModel(next.model, next.models, next.split);
-      renderModels(next);
-    };
-    modelsList.appendChild(btn);
+  const active = document.createElement("p");
+  active.className = "model-active";
+  active.textContent = `${state.host || "This system"} · ${state.split?.on ? `Fast: ${state.split.fast} + Think: ${state.split.think}` : state.local ? `Local: ${state.localModel}` : `Hosted: ${state.model}`}`;
+  modelsList.append(active);
+  const refresh = document.createElement("button");
+  refresh.className = "chat-item";
+  refresh.textContent = "Refresh available models";
+  refresh.onclick = async () => {
+    refresh.disabled = true;
+    refresh.textContent = "Checking model servers…";
+    try { renderModels(await window.pup.refreshModels()); }
+    catch (error) { refresh.textContent = `Refresh failed: ${error.message}`; refresh.disabled = false; }
+  };
+  modelsList.append(refresh);
+  if (state.modelScanError) {
+    const error = document.createElement("p"); error.className = "lane-note"; error.textContent = state.modelScanError; modelsList.append(error);
+  }
+  if (/^https:\/\/ai\.hungrynova\.com(?:\/|$)/.test(state.providerUrl || "")) {
+    const pair = document.createElement("button");
+    pair.className = "chat-item";
+    pair.textContent = "Use hosted 4B + 27B (no local GPU)";
+    pair.disabled = busy;
+    pair.onclick = async () => { const next = await window.pup.useHostedPair(); showModel(next.model, next.models, next.split); renderModels(next); };
+    modelsList.append(pair);
   }
 
   const lanesHead = document.createElement("p");
@@ -307,6 +309,8 @@ function renderModels(state) {
       if (id === current) opt.selected = true;
       sel.append(opt);
     }
+    sel.disabled = busy;
+    sel.title = state.laneEndpoints?.[lane] || "Uses the configured provider";
     sel.onchange = async () => {
       if (busy) return;
       const next = await window.pup.setLane(lane, sel.value);
@@ -321,9 +325,40 @@ function renderModels(state) {
   const note = document.createElement("p");
   note.className = "lane-note";
   note.textContent = state.split?.on
-    ? `Split on — fast ${state.split.fast} · think ${state.split.think}. Laya always routes.`
-    : "One model does the whole turn. Set a fast model to split. Laya always routes.";
+    ? `Split on — fast ${state.split.fast} · think ${state.split.think}. Thinking role plans and checks; fast role handles tool work.`
+    : "One model handles the turn. Set a fast model to enable separate roles.";
   modelsList.append(note);
+  const chatHead = document.createElement("p");
+  chatHead.className = "sheet-sub";
+  chatHead.textContent = "Choose one model (turns off the pair)";
+  modelsList.append(chatHead);
+
+  const localRows = (state.localModels || []).map((row) => ({ ...row, localChoice: true, label: row.model, hint: "local" }));
+  let group = "";
+  for (const row of [...localRows, ...(state.models || []).filter((row) => row.id !== "local-3.8" || !localRows.length)]) {
+    const nextGroup = row.localChoice || row.id === "local-3.8" ? "Local Ollama / LM Studio" : "Hosted provider";
+    if (group !== nextGroup) { const label = document.createElement("p"); label.className = "sheet-sub"; label.textContent = nextGroup; modelsList.append(label); group = nextGroup; }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chat-item";
+    if (row.localChoice ? state.local && row.model === state.localModel && row.url === state.chatUrl : row.id === state.model) btn.classList.add("current");
+    const title = document.createElement("span");
+    title.textContent = row.label || row.id;
+    title.title = row.model || row.label || row.id;
+    const hint = document.createElement("em");
+    hint.textContent = row.hint || "";
+    btn.append(title, hint);
+    btn.onclick = async () => {
+      if (busy) return;
+      const next = row.localChoice ? (await window.pup.setupUse({ url: row.url, model: row.model })).state : await window.pup.setModel(row.id);
+      if (!next) return;
+      showModel(next.model, next.models, next.split);
+      renderModels(next);
+    };
+    modelsList.appendChild(btn);
+  }
+
+
 }
 
 function renderChats(session) {
@@ -819,8 +854,8 @@ const PROVIDERS = [
     url: "https://ai.hungrynova.com/v1",
     kind: "https",
     fixedUrl: true,
-    models: ["nova-pup:4b", "muse", "nova-pup:118b"],
-    note: "Enter the API key we gave you and connect. One key fills both the fast and thinking roles.",
+    models: ["nova-pup:27b", "nova-pup:4b", "nova-pup:3.8", "nova-master:next"],
+    note: "Enter the API key we gave you and connect. Then choose the hosted 4B + 27B pair in Models.",
   },
   {
     id: "openai",
@@ -856,7 +891,7 @@ const PROVIDERS = [
   },
   {
     id: "local",
-    label: "On this Mac (Ollama / LM Studio)",
+    label: "On this computer (Ollama / LM Studio)",
     url: "",
     kind: "local",
     models: [],
@@ -897,7 +932,7 @@ function applyProvider() {
     wakeModels.append(opt);
   }
   if (!local) wakeModel.value = (p.models && p.models[0]) || "";
-  wakeBtn.textContent = local ? "Scan this Mac" : "Connect";
+  wakeBtn.textContent = local ? "Scan this computer" : "Connect";
 }
 
 for (const p of PROVIDERS) {
@@ -933,15 +968,19 @@ wakeBtn.onclick = async () => {
     return;
   }
   wakeBtn.disabled = true;
-  const next = await window.pup.saveKeys({ chatKey, toolsKey, model, chatUrl: url });
-  wakeBtn.disabled = false;
+  let next;
+  try { next = await window.pup.saveKeys({ chatKey, toolsKey, model, chatUrl: url }); }
+  catch (error) { wakeNote.textContent = `Could not save settings: ${error.message}`; return; }
+  finally { wakeBtn.disabled = false; }
   if (next.urlRejected) {
     wakeNote.textContent = "That address was not accepted. Use a public https URL.";
     return;
   }
   if (next.ready) {
     wake.hidden = true;
-    add("assistant", "Connected. Ask me anything and I’ll do it.");
+    showModel(next.model, next.models, next.split);
+    renderModels(next);
+    add("assistant", "Provider saved. The next message will test the connection.");
   } else {
     wakeNote.textContent = "Still not connected. Check the key and address.";
   }

@@ -22,7 +22,8 @@ export function readTerminal(limit = 12_000) {
 
 export function sendTerminal(text, enter = true) {
   if (!pty) return { ok: false, error: "terminal is not up" };
-  const payload = enter && !String(text).endsWith("\n") ? `${text}\n` : String(text);
+  const newline = process.platform === "win32" ? "\r" : "\n";
+  const payload = enter ? `${String(text).replace(/[\r\n]+$/, "")}${newline}` : String(text);
   pty.write(payload);
   return { ok: true, sent: payload };
 }

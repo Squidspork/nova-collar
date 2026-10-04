@@ -26,6 +26,8 @@ import { beginTurn, endTurn } from "./guard.js";
 import { bindTermPid, getWorkdir, loadWorkdir, noteTermActivity, onWorkdir, setWorkdir, watchShellCwd } from "./workdir.js";
 import { startLaya, stopLaya } from "./laya.js";
 import { ensureOllama, scanLocalModels } from "./setup.js";
+import { cdCommand, shellLaunch, terminalEnv } from "./platform.js";
+import { cancelApprovals, pendingApprovals, resolveApproval, setApprovalNotifier } from "./approvals.js";
 import { completeSpec, readSpec, writeSpec } from "./spec.js";
 
 const pty = createRequire(import.meta.url)("node-pty");
@@ -37,6 +39,7 @@ let currentId = null;
 let currentGoal = "";
 let currentArchive = [];
 let currentBot = null;
+let localServers = [];
 let turnAbort = null;
 const history = [];
 
@@ -47,6 +50,7 @@ function send(payload) {
 function fromWindow(event) {
   return Boolean(win && !win.isDestroyed() && event?.sender === win.webContents);
 }
+setApprovalNotifier(send);
 
 function boundsPath() {
   return join(APP_HOME, "window.json");
@@ -127,19 +131,16 @@ function createWindow() {
 }
 
 function startPty() {
-  const shellPath = process.env.SHELL || "/bin/zsh";
+  const shell = shellLaunch();
   const startDir = loadWorkdir();
   // Make the CLI reachable in the window's terminal: ~/.local/bin is where the
   // installer links `np` / `nova-collar`, but it is not on a GUI app's PATH.
-  const localBin = join(homedir(), ".local", "bin");
-  const basePath = process.env.PATH || "";
-  const withLocal = basePath.split(":").includes(localBin) ? basePath : `${localBin}:${basePath}`;
-  term = pty.spawn(shellPath, ["-l"], {
+  term = pty.spawn(shell.file, shell.args, {
     name: "xterm-256color",
     cols: 80,
     rows: 18,
     cwd: startDir || homedir(),
-    env: { ...process.env, PATH: withLocal },
+    env: terminalEnv(),
   });
   bindPty(term);
   bindTermPid(term.pid);
@@ -170,10 +171,14 @@ function modelHistory() {
   return mergeAssistants(history);
 }
 
+let hostedCatalog = null;
 function snapshot() {
   const cfg = loadConfig();
   return {
     ...publicState(),
+    ...(hostedCatalog?.url === cfg.chatUrl ? { models: [{ id: "local-3.8", label: `Local: ${cfg.localModel}`, hint: "this system" }, ...hostedCatalog.models] } : {}),
+    approvals: pendingApprovals(),
+    localModels: localServers.flatMap((server) => server.models.map((model) => ({ url: server.url, model }))),
     npReady: existsSync(join(homedir(), ".local", "bin", "np")),
     packs: [
       ...packPublic(),
@@ -274,7 +279,7 @@ function senseAfter(messages) {
 
 function applyWorkdir(path, opts = {}) {
   const next = setWorkdir(path, opts);
-  if (next.ok) sendTerminal(`cd ${JSON.stringify(next.path)}`);
+  if (next.ok) sendTerminal(cdCommand(next.path));
   return next;
 }
 
@@ -348,12 +353,13 @@ function startAutoUpdate() {
   } catch {}
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   ensureHome();
   loadWorkdir();
   const { session } = bootSessions();
   useSession(session);
   onWorkdir((path) => send({ type: "cwd", path }));
+  localServers = (await scanLocalModels()).found;
   createWindow();
   startPty();
   startLaya();
@@ -366,7 +372,7 @@ app.whenReady().then(() => {
         type: "notice",
         title: row.title,
         text: row.status === "hold"
-          ? "Waiting. Say yes in the Pack chat to allow one overwrite or delete. Older copies are kept."
+          ? "Paused for permission. Retry from the Pack chat to review the exact action. Older copies are kept."
           : (String(row.assistant || "").split("\n").map((line) => line.trim()).find(Boolean) || "Done."),
         chatId: row.chatId || "",
       });
@@ -375,14 +381,21 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+  cancelApprovals();
   stopBoard();
   stopLaya();
 });
 app.on("window-all-closed", () => app.quit());
 
 ipcMain.handle("state", (event) => (fromWindow(event) ? snapshot() : {}));
+ipcMain.handle("approval:resolve", (event, body) => fromWindow(event) && resolveApproval(body?.id, body?.allowed === true));
 
-ipcMain.handle("setup:scan", async (event) => (fromWindow(event) ? scanLocalModels() : { found: [] }));
+ipcMain.handle("setup:scan", async (event) => {
+  if (!fromWindow(event)) return { found: [] };
+  const report = await scanLocalModels();
+  localServers = report.found;
+  return report;
+});
 
 ipcMain.handle("setup:install", async (event) => {
   if (!fromWindow(event)) return { ok: false };
@@ -416,6 +429,38 @@ ipcMain.handle("keys", (event, keys) => {
   const result = saveKeys(keys && typeof keys === "object" ? keys : {});
   const state = snapshot();
   return result && result.urlRejected ? { ...state, urlRejected: result.urlRejected } : state;
+});
+
+ipcMain.handle("models:scan", async (event) => {
+  if (!fromWindow(event)) return {};
+  const cfg = loadConfig();
+  const scan = scanLocalModels().then((report) => { localServers = report.found; });
+  let modelScanError = "";
+  if (cfg.chatUrl && (cfg.chatKey || cfg.toolsKey)) {
+    try {
+      const response = await fetch(`${cfg.chatUrl.replace(/\/$/, "")}/models`, {
+        headers: { authorization: `Bearer ${cfg.chatKey || cfg.toolsKey}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body = await response.json();
+      const models = (Array.isArray(body.data) ? body.data : []).filter((row) => typeof row.id === "string").map((row) => ({ id: row.id, label: row.id, hint: "hosted" }));
+      if (!models.length) throw new Error("No models returned");
+      hostedCatalog = { url: cfg.chatUrl, models };
+    } catch (error) { modelScanError = `Hosted model refresh failed: ${error.message}`; }
+  }
+  await scan;
+  return { ...snapshot(), modelScanError };
+});
+
+ipcMain.handle("models:hosted-pair", (event) => {
+  if (!fromWindow(event)) return {};
+  const cfg = loadConfig();
+  if (new URL(cfg.chatUrl || "https://invalid.local").hostname !== "ai.hungrynova.com") return snapshot();
+  saveKeys({ model: "nova-pup:27b" });
+  saveLane({ lane: "fast", model: "nova-pup:4b" });
+  saveLane({ lane: "think", model: "nova-pup:27b" });
+  return snapshot();
 });
 
 ipcMain.handle("model", (event, id) => {
@@ -571,6 +616,7 @@ ipcMain.handle("pin", (event, on) => {
 
 ipcMain.handle("open-settings", (event) => {
   if (!fromWindow(event)) return false;
+  if (process.platform !== "darwin") return false;
   return shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
 });
 
@@ -624,7 +670,7 @@ ipcMain.handle("chat", async (event, payload) => {
   const text = (typeof payload === "string" ? payload : String(payload?.text || "")).slice(0, 24_000);
   const pack = safePack(typeof payload === "object" && payload ? payload.pack : "");
   const cfg = loadConfig();
-  if (!existsSync(BIN)) {
+  if (platform() === "darwin" && !existsSync(BIN)) {
     send({ type: "error", text: "mac-control is missing. Run npm run build:mac" });
   }
   const goalCmd = applyGoalCommand(text, currentGoal);
