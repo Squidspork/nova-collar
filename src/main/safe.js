@@ -100,12 +100,12 @@ export function denySecretPath(path) {
   const full = resolve(String(path || ""));
   const envFile = resolve(join(novapupHome(), "env"));
   if (full === envFile) return "blocked a secrets file";
-  if (SECRET_NAME.test(full)) return "blocked a secrets file";
+  if (SECRET_NAME.test(full.replaceAll("\\", "/"))) return "blocked a secrets file";
   return "";
 }
 
 export function denySecretCommand(command) {
-  return SECRET_CMD.test(String(command || "")) ? "blocked a secrets command" : "";
+  return SECRET_CMD.test(String(command || "").replaceAll("\\", "/")) ? "blocked a secrets command" : "";
 }
 
 export function redactSecrets(value) {

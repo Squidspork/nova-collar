@@ -56,7 +56,7 @@ function run(args) {
 try {
   const disk = run(["/disk"]);
   assert.equal(disk.status, 0, disk.stderr);
-  assert.match(disk.stdout, /%|Filesystem|Avail/);
+  assert.match(disk.stdout, process.platform === "win32" ? /DeviceID[\s\S]*FreeSpace/ : /%|Filesystem|Avail/);
 
   const facts = run(["/facts"]);
   assert.equal(facts.status, 0, facts.stderr);
@@ -82,7 +82,7 @@ try {
 
   const ports = run(["/ports"]);
   assert.equal(ports.status, 0, ports.stderr);
-  assert.match(ports.stdout, /LISTEN|State|no ss or lsof/i);
+  assert.match(ports.stdout, process.platform === "win32" ? /LocalAddress[\s\S]*LocalPort/ : /LISTEN|State|no ss or lsof/i);
 } finally {
   rmSync(home, { recursive: true, force: true });
 }

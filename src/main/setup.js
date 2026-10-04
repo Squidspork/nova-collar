@@ -10,7 +10,7 @@ const PROBES = [
 
 function which(name) {
   try {
-    return execFileSync("which", [name], { encoding: "utf8" }).trim();
+    return execFileSync(platform() === "win32" ? "where.exe" : "which", [name], { encoding: "utf8", windowsHide: true }).trim().split(/\r?\n/)[0];
   } catch {
     return "";
   }
@@ -102,6 +102,7 @@ export async function ensureOllama(onLine) {
   if (!plan.model) return { ok: false, error: "This system has under 8 GB of memory. A local model will not fit." };
   const already = await probe(PROBES[0]);
   if (!already && !plan.ollamaBin) {
+    if (plan.platform === "win32") return { ok: false, error: "Install Ollama for Windows from https://ollama.com/download/windows, open it, then scan again." };
     onLine(plan.platform === "darwin" ? "Installing Ollama with Homebrew." : "Installing Ollama.");
     const installed = plan.platform === "darwin" && plan.brew
       ? await run("brew", ["install", "ollama"], onLine)
@@ -116,12 +117,13 @@ export async function ensureOllama(onLine) {
       stdio: "ignore",
       env: { ...process.env, OLLAMA_HOST: "127.0.0.1:11434" },
     });
+    child.on("error", () => {});
     child.unref();
     const up = await waitForOllama();
     if (!up) return { ok: false, error: "Ollama did not answer on 127.0.0.1:11434." };
   }
   onLine(`Downloading ${plan.model.name}. About ${plan.model.diskGb} GB.`);
-  const pulled = await run("ollama", ["pull", plan.model.name], onLine, {
+  const pulled = await run(which("ollama") || "ollama", ["pull", plan.model.name], onLine, {
     ...process.env,
     OLLAMA_HOST: "127.0.0.1:11434",
   });

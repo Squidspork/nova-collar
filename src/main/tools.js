@@ -1,3 +1,5 @@
+import { authorizeAction } from "./approvals.js";
+import { cdCommand } from "./platform.js";
 import { readFileSync, existsSync } from "node:fs";
 import { generateImage } from "./comfy.js";
 import { isDeskTool, runDesk } from "./mac.js";
@@ -122,6 +124,7 @@ export function toolDefs({ local = false, search = false } = {}) {
     fn("computer_write", "Write a file on the HNL computer workspace.", { path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
     fn("computer_pi", "Run Pi on the HNL computer for a coding task.", { prompt: { type: "string" }, model: { type: "string" } }, ["prompt"]),
   ];
+  const supported = defs.filter((row) => process.platform === "darwin" || !row.function.name.startsWith("mac_"));
   if (local) {
     const keep = new Set([
       ...LOCAL_PACK_TOOLS,
@@ -142,10 +145,10 @@ export function toolDefs({ local = false, search = false } = {}) {
       "mac_info",
       "mac_windows",
     ]);
-    return defs.filter((row) => keep.has(row.function?.name || "") && (search || !HNL_SEARCH.has(row.function?.name || "")));
+    return supported.filter((row) => keep.has(row.function?.name || "") && (search || !HNL_SEARCH.has(row.function?.name || "")));
   }
-  if (search) return defs;
-  return defs.filter((row) => !HNL_SEARCH.has(row.function?.name || ""));
+  if (search) return supported;
+  return supported.filter((row) => !HNL_SEARCH.has(row.function?.name || ""));
 }
 
 export function wantsRemoteComputer(text) {
@@ -181,7 +184,10 @@ function parseArgs(raw) {
 
 export async function executeTool(name, rawArgs, cfg, ctx = {}) {
   try {
-    return await runTool(name, rawArgs, cfg, ctx);
+    const execution = { ...ctx };
+    const args = structuredClone(parseArgs(rawArgs));
+    const result = await runTool(name, args, cfg, execution);
+    return { ...result, approved: execution.actionApproved === true };
   } catch (error) {
     return { ok: false, error: redactSecrets(error.message || "tool failed") };
   }
@@ -216,6 +222,11 @@ async function runTool(name, rawArgs, cfg, ctx = {}) {
   if (ctx.bot && (name === "set_rules" || name === "set_personality" || name === "pack_task")) {
     return { ok: false, error: "teammates cannot rewrite Nova Collar or assign the pack" };
   }
+  if ((name === "host_run" || name === "term_send") && denySecretCommand(args.command || args.text)) return { ok: false, error: "blocked a secrets command" };
+  const approval = await authorizeAction(name, args, ctx);
+  if (!approval.ok) return approval;
+  ctx.actionApproved = approval.approved;
+  if (approval.approved) ctx.allow = true;
   if (name === "pack_task") {
     const { assignTask } = await import("./tasks.js");
     const assigned = assignTask({
@@ -279,7 +290,7 @@ async function runTool(name, rawArgs, cfg, ctx = {}) {
   }
   if (name === "set_workdir") {
     const next = setWorkdir(args.path, { create: Boolean(args.create) });
-    if (next.ok) sendTerminal(`cd ${JSON.stringify(next.path)}`);
+    if (next.ok) sendTerminal(cdCommand(next.path));
     return next;
   }
   if (name === "term_read") return { ok: true, text: readTerminal() };

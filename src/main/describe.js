@@ -98,8 +98,11 @@ export function describeTool(name, rawArgs, result = {}) {
     blurb = ok ? `Memory search: ${count} for ${short(args.q, 40)}` : "Memory search failed";
     detail = lines([args.q, ...(result.hits || []).map((hit) => hit.text)]);
   } else if (name === "web_search" || name === "docs_search") {
+    const hits = result.hits || result.data?.results || result.data?.hits || [];
+    const first = Array.isArray(hits) ? hits[0] : null;
+    const found = first ? [first.title, first.snippet || first.text].filter(Boolean).join(": ") : "";
     blurb = ok ? `Searched ${short(args.q, 60)}` : "Search failed";
-    detail = args.q || "";
+    detail = ok ? lines([args.q, short(found, 180)]) : lines([args.q, result.error]);
   } else if (name === "extract" || name === "scrape") {
     blurb = ok ? `Read ${short(args.url, 60)}` : "Page fetch failed";
     detail = args.url || "";

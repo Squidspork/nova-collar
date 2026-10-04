@@ -1,4 +1,5 @@
-import { applyToolDelta, finishToolCalls, mergeName, splitToolName, knownToolNames } from "../src/main/tool-calls.js";
+import { applyToolDelta, finishToolCalls, mergeName, splitToolName, knownToolNames, unfinishedArgs } from "../src/main/tool-calls.js";
+import { pushThink, streamPiece, thoughtLoop } from "../src/main/reason.js";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +29,8 @@ import {
 } from "../src/main/harness.js";
 import { admitsUnknown, claimTokens, createGround, FACT_LAW, factAsk, folderAsk, missingClaims } from "../src/main/ground.js";
 import { realToolName, toolDefs } from "../src/main/tools.js";
+import { searchArgs } from "../src/main/hnl.js";
+import { describeTool } from "../src/main/describe.js";
 import { stackStep } from "../src/main/stack.js";
 import { createTimeline, mergeAssistants } from "../src/main/timeline.js";
 import { inferPack } from "../src/main/packs.js";
@@ -47,6 +50,35 @@ assert(knownToolNames().has("host_run") && knownToolNames().has("bash"), "known 
 assert(toolDefs().every((row) => row.function.name !== "bash" && row.function.name !== "write_file"), "aliases stay off the public tool list");
 assert(!toolDefs().some((row) => ["web_search", "extract", "scrape", "docs_search"].includes(row.function.name)), "public list has no hosted search");
 assert(toolDefs({ search: true }).some((row) => row.function.name === "web_search"), "search tools exist when enabled");
+const successive = { buf: "", hide: false };
+assert(pushThink(successive, "Hello ").answer === "Hello ", "first answer chunk passes");
+assert(pushThink(successive, "world").answer === "world", "consumed text is not buffered a second time");
+const think = { buf: "", hide: false };
+const opened = pushThink(think, "hello <thi");
+const closed = pushThink(think, "nk>secret</think> there");
+const glued = ["Good", ",", " cwd", " is"].reduce((have, piece) => streamPiece(have, piece).text, "");
+assert(glued === "Good, cwd is", "stream deltas concatenate");
+assert(streamPiece("ha", "ha").text === "haha", "legitimate repeated tokens are preserved");
+assert(streamPiece(" ", " ").text === "  ", "repeated whitespace is preserved");
+assert(opened.answer === "hello " && opened.thought === "", "a partial think tag stays hidden");
+assert(closed.answer === " there" && closed.thought === "secret", "think text is split out of the answer");
+assert(thoughtLoop("The film list is short and the timeline is the point. ".repeat(2)) === false, "a short note is not a loop");
+assert(thoughtLoop("I need to search. ".repeat(20)) === true, "a repeated phrase is a loop");
+assert(unfinishedArgs("{", []) === "arguments are not finished JSON", "an open brace is unfinished");
+assert(unfinishedArgs("{}", ["q"]) === "missing q", "a search without q is unfinished");
+assert(unfinishedArgs('{"q":"box office"}', ["q"]) === "", "a finished search is ready");
+assert(unfinishedArgs('{"path":"test.txt","content":""}', ["path", "content"]) === "", "empty file content is intentional, not missing");
+assert(unfinishedArgs("{}", []) === "", "an empty object is finished when nothing is required");
+assert(searchArgs("web_search", "{}") === "{}", "empty web_search does not invent a query");
+const aliased = JSON.parse(searchArgs("web_search", JSON.stringify({ query: "box office" })));
+assert(aliased.q === "box office", "web_search accepts query as q");
+const failedSearch = describeTool("web_search", "{}", { ok: false, error: "q required" });
+assert(failedSearch.detail.includes("q required"), "search failure shows the error");
+const shown = describeTool("web_search", JSON.stringify({ q: "box office" }), {
+  ok: true,
+  data: { results: [{ title: "Masters of the Universe", snippet: "opened to $42 million" }] },
+});
+assert(shown.detail.includes("opened to $42 million"), "search card shows the hit");
 assert(realToolName("bash") === "host_run" && realToolName("write_file") === "host_file_write", "aliases map to host_*");
 const aliasCall = new Map();
 applyToolDelta(aliasCall, { index: 0, function: { name: "bash", arguments: "{\"command\":\"ps\"}" } });
@@ -288,6 +320,7 @@ assert(wrongWriteBlame("host file write failed.", [{ name: "host_file_write", ok
 assert(wrongWriteBlame("host file write failed.", [{ name: "host_file_write", ok: false }]) === false, "a real write failure stays a failure");
 
 const old = Array.from({ length: 24 }, (_, i) => `alpha line ${i} extra text`).join("\n");
+writeFileSync(join(dir, "run.py"), old);
 const rewriteGate = createHarness();
 rewriteGate.note("read_file", { path: join(dir, "run.py") }, { ok: true, path: join(dir, "run.py"), text: old });
 const blocked = await rewriteGate.after(

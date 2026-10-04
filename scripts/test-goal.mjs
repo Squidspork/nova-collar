@@ -352,3 +352,13 @@ assert.equal(saved.archive[0].verdict, "retry");
 assert.match(saved.archive[0].internalGoal, /Disprove/);
 
 console.log("goal ok");
+
+const emptyTrail = [
+  {name:"host_file_write",ok:true,filePath:"fixture.txt",fileBytes:0},
+  {name:"host_file_read",ok:true,filePath:"fixture.txt",fileBytes:0},
+];
+assert.equal(planAudit({claim:"PASS — file is empty.",trail:emptyTrail}).action,"held");
+assert.equal(planAudit({claim:"PASS — file is empty.",trail:[emptyTrail[0],{...emptyTrail[1],filePath:"different.txt"}]}).action,"retry");
+assert.equal(planAudit({claim:"PASS — file is empty.",trail:[emptyTrail[0],{...emptyTrail[1],fileBytes:30}]}).action,"retry");
+assert.equal(planAudit({claim:"PASS — the application works.",trail:emptyTrail}).action,"retry");
+assert.doesNotMatch(unprovenAnswer("PASS — done.\nMore detail.","opposite"),/^PASS/m);

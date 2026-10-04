@@ -14,7 +14,8 @@ const info = {
 };
 assert.equal(parseChoice("", info).source, "found");
 assert.equal(parseChoice("", { found: [], localFit: info.localFit }).source, "endpoint");
-assert.equal(parseChoice("2", info).model, "qwen2.5:14b");
+if (process.platform === "win32") assert.match(parseChoice("2", info).error, /macOS and Linux/);
+else assert.equal(parseChoice("2", info).model, "qwen2.5:14b");
 assert.equal(parseChoice("3", info).error, "Choose 1 or 2.");
 assert.ok(choiceList(info).some((line) => line.startsWith("1. Bring your own")));
 assert.equal(choiceList(info).some((line) => /gateway|HNL27b/i.test(line)), false);

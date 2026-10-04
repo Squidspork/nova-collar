@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
+import { isWindows, quoteShell } from "./platform.js";
 import { runBash } from "./files.js";
 import { denySecretPath } from "./safe.js";
 import { expandPath, getWorkdir } from "./workdir.js";
@@ -71,14 +72,15 @@ export function missExpect(stdout, expects) {
 export function verifyCommand(path, { expand = true } = {}) {
   const full = expand ? expandPath(path, getWorkdir()) : String(path || "");
   const ext = extname(full).toLowerCase();
-  const q = JSON.stringify(full);
-  if (ext === ".py") return { full, command: `python3 -m py_compile ${q}` };
+  const windows = expand && isWindows;
+  const q = quoteShell(full, windows);
+  if (ext === ".py") return { full, command: `${windows ? "python" : "python3"} -m py_compile ${q}` };
   if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return { full, command: `node --check ${q}` };
   if (ext === ".ts" || ext === ".tsx") {
     return { full, command: `npx --no-install tsc --pretty false --noEmit --skipLibCheck ${q}` };
   }
-  if (ext === ".go") return { full, command: `gofmt -e ${q} >/dev/null && go build -o /dev/null ${q}` };
-  if (ext === ".json") return { full, command: `python3 -c 'import json,sys; json.load(open(sys.argv[1]))' ${q}` };
+  if (ext === ".go") return { full, command: windows ? `gofmt -e ${q} | Out-Null; if ($LASTEXITCODE -eq 0) { go build -o NUL ${q} }` : `gofmt -e ${q} >/dev/null && go build -o /dev/null ${q}` };
+  if (ext === ".json") return { full, command: `${windows ? "python" : "python3"} -c 'import json,sys; json.load(open(sys.argv[1]))' ${q}` };
   if (ext === ".sh" || ext === ".bash") return { full, command: `bash -n ${q}` };
   return null;
 }
@@ -87,17 +89,18 @@ export function runCommand(path, source = "", { expand = true } = {}) {
   const full = expand ? expandPath(path, getWorkdir()) : String(path || "");
   if (isVerifierPath(full)) return null;
   const ext = extname(full).toLowerCase();
-  const q = JSON.stringify(full);
+  const windows = expand && isWindows;
+  const q = quoteShell(full, windows);
   if (isWindowSource(full, source) && (ext === ".js" || ext === ".mjs" || ext === ".cjs")) {
     return { full, command: `node ${q}`, window: true };
   }
   if (isTuiSource(full, source)) return null;
   if (isTestPath(full)) {
-    if (ext === ".py") return { full, command: `python3 -m pytest -q ${q}`, test: true };
+    if (ext === ".py") return { full, command: `${windows ? "python" : "python3"} -m pytest -q ${q}`, test: true };
     if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return { full, command: `node --test ${q}`, test: true };
     if (ext === ".go") return { full, command: `go test ${q}`, test: true };
   }
-  if (ext === ".py") return { full, command: `python3 ${q}` };
+  if (ext === ".py") return { full, command: `${windows ? "python" : "python3"} ${q}` };
   if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return { full, command: `node ${q}` };
   if (ext === ".sh" || ext === ".bash") return { full, command: `bash ${q}` };
   return null;
@@ -110,13 +113,14 @@ function shaped(raw) {
     stderr: String(raw?.stderr || ""),
     error: String(raw?.error || ""),
     killed: raw?.killed,
+    held: raw?.held,
   };
 }
 
 function judged(result, path, kind) {
   const err = String(result.stderr || result.error || result.stdout || "").trim();
   if (result.ok) return { ok: true, path, blurb: `${kind} ok ${path}`, stdout: result.stdout.slice(0, 400) };
-  return { ok: false, path, error: err.slice(0, 800) || `${kind} failed`, blurb: `${kind} failed ${path}` };
+  return { ok: false, held: result.held, path, error: err.slice(0, 800) || `${kind} failed`, blurb: `${kind} failed ${path}` };
 }
 
 export async function verifyPath(path, extra = {}) {
@@ -139,7 +143,7 @@ export async function probePath(path, source = "", extra = {}) {
   const run = extra.exec || ((command) => runBash(command, undefined, { timeoutMs: 3500 }));
   let result = shaped(await run(plan.command));
   if (plan.test && /No module named pytest|pytest: command not found/i.test(`${result.stderr} ${result.error}`)) {
-    result = shaped(await run(`python3 ${JSON.stringify(plan.full)}`));
+    result = shaped(await run(`${expand && isWindows ? "python" : "python3"} ${quoteShell(plan.full, expand && isWindows)}`));
   }
   const out = `${result.stdout}\n${result.stderr}\n${result.error}`;
   if (CRASH.test(out)) {
@@ -154,6 +158,7 @@ export async function probePath(path, source = "", extra = {}) {
   if (!(result.ok || /usage:|argparse|required arguments/i.test(out))) {
     return {
       ok: false,
+      held: result.held,
       path: plan.full,
       error: String(result.stderr || result.error || "run failed").slice(0, 800),
       blurb: `run failed ${plan.full}`,
@@ -191,7 +196,7 @@ export async function runJobSpec(spec, extra = {}) {
   const result = shaped(await run(spec.check));
   const out = `${result.stdout}\n${result.stderr}`;
   if (!result.ok) {
-    return { ok: false, path: "harness.json", blurb: "job check failed", error: String(result.stderr || result.error || "check failed").slice(0, 800) };
+    return { ok: false, held: result.held, path: "harness.json", blurb: "job check failed", error: String(result.stderr || result.error || "check failed").slice(0, 800) };
   }
   if (spec.expect && !out.includes(spec.expect)) {
     return { ok: false, path: "harness.json", blurb: `job missed ${spec.expect}`, error: `harness.json expect ${JSON.stringify(spec.expect)} not in output` };

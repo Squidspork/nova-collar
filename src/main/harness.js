@@ -177,7 +177,7 @@ function specNear(path) {
   return readJobSpec(dirname(full)) || readJobSpec(getWorkdir());
 }
 
-export function createHarness({ ask = "", remoteExec } = {}) {
+export function createHarness({ ask = "", remoteExec, localExec, approvalAware = false } = {}) {
   const wrote = new Set();
   const passed = new Set();
   const prior = new Map();
@@ -226,6 +226,9 @@ export function createHarness({ ask = "", remoteExec } = {}) {
   }
 
   function auditDisk() {
+    // Mutating shell actions already require approval. Never roll back a human
+    // edit noticed during an unrelated read-only command.
+    if (approvalAware) return null;
     const seen = new Set();
     for (const [path, old] of prior) {
       const full = expandPath(path, getWorkdir());
@@ -233,16 +236,18 @@ export function createHarness({ ask = "", remoteExec } = {}) {
       seen.add(full);
       const now = readUserFile(full);
       if (!now?.ok || now.directory) continue;
-      const patch = patchVerdict(old, now.text);
+      let current;
+      try { current = readFileSync(full, "utf8"); } catch { continue; }
+      const patch = patchVerdict(old, current);
       if (patch.ok) continue;
-      writeUserFile(full, old);
-      return proof(false, full, `rewrite blocked ${full}`, `${patch.error} (shell write reverted)`);
+      const restored = writeUserFile(full, old);
+      return proof(false, full, `rewrite blocked ${full}`, `${patch.error} (${restored.ok ? "shell write reverted" : `restore failed: ${restored.error}`})`);
     }
     return null;
   }
 
   async function finishCheck(path, text, exec) {
-    const opts = exec ? { expand: false, exec, expect } : { expect };
+    const opts = exec ? { expand: false, exec, expect } : { exec: localExec, expect };
     const compile = await verifyPath(path, opts);
     if (!compile) {
       unchecked.add(path);
@@ -253,14 +258,14 @@ export function createHarness({ ask = "", remoteExec } = {}) {
     if (!compile.ok) {
       broken.add(compile.path);
       clean.delete(compile.path);
-      return proof(false, compile.path, compile.blurb, compile.error);
+      return { ...proof(false, compile.path, compile.blurb, compile.error), held: compile.held };
     }
     const run = await probePath(path, text, { ...opts, expect: [...expect, ...tokensFor(path)] });
     markAsks({ runOut: run?.stdout || run?.error || "" });
     if (run && !run.ok) {
       broken.add(run.path);
       clean.delete(run.path);
-      return proof(false, run.path, run.blurb, run.error);
+      return { ...proof(false, run.path, run.blurb, run.error), held: run.held };
     }
     clean.add(compile.path);
     broken.delete(compile.path);
@@ -268,11 +273,11 @@ export function createHarness({ ask = "", remoteExec } = {}) {
     if (!exec) {
       const spec = specNear(path);
       if (spec) {
-        const job = await runJobSpec(spec);
+        const job = await runJobSpec(spec, { exec: localExec });
         if (job && !job.ok) {
           broken.add(compile.path);
           clean.delete(compile.path);
-          return proof(false, job.path, job.blurb, job.error);
+          return { ...proof(false, job.path, job.blurb, job.error), held: job.held };
         }
         jobNote = job?.blurb || "";
       }
@@ -318,8 +323,14 @@ export function createHarness({ ask = "", remoteExec } = {}) {
     note(name, args, result) {
       const text = result?.text ?? result?.content;
       if (READ.has(name) && result?.ok && text != null) {
-        if (result.path) prior.set(result.path, String(text));
-        if (args?.path) prior.set(expandPath(args.path, getWorkdir()), String(text));
+        if (name === "computer_read") {
+          if (result.path) prior.set(result.path, String(text));
+          if (args?.path) prior.set(args.path, String(text));
+        } else {
+          // Tool output is redacted and truncated; it must never become a restore copy.
+          if (result.path) snapshotIfExists(result.path, prior);
+          if (args?.path) snapshotIfExists(args.path, prior);
+        }
       }
       if (!WRITE.has(name) || !result?.ok || !result.path) return;
       if (isCodePath(result.path) || isPagePath(result.path)) wrote.add(result.path);
@@ -341,13 +352,18 @@ export function createHarness({ ask = "", remoteExec } = {}) {
       }
       if (!isCodePath(full) && !isCodePath(args.path) && !isPagePath(full) && !isPagePath(args.path)) return null;
       const patch = patchVerdict(prior.get(full) || prior.get(args.path), String(args.content || ""));
-      if (!patch.ok) return proof(false, full, `rewrite blocked ${full}`, patch.error);
+      if (!patch.ok && !approvalAware) return proof(false, full, `rewrite blocked ${full}`, patch.error);
       return null;
     },
     async after(name, rawArgs, result) {
       const args = parseArgs(rawArgs);
       this.note(name, args, result);
       if (SHELL.has(name)) {
+        if (!result?.ok) return null;
+        if (result.approved) {
+          // This exact command was reviewed. Keep its changes as the new baseline.
+          for (const path of [...prior.keys()]) { prior.delete(path); snapshotIfExists(path, prior); }
+        }
         const smash = auditDisk();
         if (smash) return smash;
         const targets = shellTargets(args.command).filter((file) => isCodePath(file) && existsSync(file));
@@ -373,10 +389,10 @@ export function createHarness({ ask = "", remoteExec } = {}) {
       }
       const text = String(args.content || sources.get(file) || "");
       const patch = patchVerdict(prior.get(file), text);
-      if (!patch.ok) {
+      if (!patch.ok && !result.approved) {
         const old = prior.get(file);
-        if (old != null) writeUserFile(file, old);
-        return proof(false, file, `rewrite blocked ${file}`, patch.error);
+        const restored = old != null ? writeUserFile(file, old) : null;
+        return proof(false, file, `rewrite blocked ${file}`, `${patch.error}${restored && !restored.ok ? `; restore failed: ${restored.error}` : ""}`);
       }
       if (text) prior.set(file, text);
       return finishCheck(file, text);

@@ -87,6 +87,30 @@ export function splitToolName(raw, known = knownToolNames()) {
   return rest ? [] : out;
 }
 
+/** Required argument names for one offered tool. */
+export function requiredFields(tools, name) {
+  const row = (tools || []).find((item) => item?.function?.name === name);
+  const required = row?.function?.parameters?.required;
+  return Array.isArray(required) ? required.filter((key) => typeof key === "string") : [];
+}
+
+/** Why a tool call cannot run yet. Empty means the arguments are finished. */
+export function unfinishedArgs(raw, required = []) {
+  const text = String(raw ?? "").trim();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    return "arguments are not finished JSON";
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "arguments are not an object";
+  const missing = required.filter((key) => {
+    const value = parsed[key];
+    return value == null || (key !== "content" && typeof value === "string" && !value.trim());
+  });
+  return missing.length ? `missing ${missing.join(", ")}` : "";
+}
+
 export function finishToolCalls(calls, { max = 3 } = {}) {
   const known = knownToolNames();
   const rows = [];
