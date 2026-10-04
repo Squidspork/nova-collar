@@ -24,7 +24,7 @@ function pythonBin() {
   if (found) return found;
   // No pinned venv: try a python3 on PATH. If it lacks torch or the laya package,
   // the reader exits on import and the window falls back to the heuristic decider.
-  return "python3";
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 export function layaReady() {
@@ -37,14 +37,14 @@ export function layaReady() {
 const LAYA_PIP = process.env.NP_LAYA_PIP || "laya==0.3.20";
 
 export function layaVenvPython() {
-  return join(venvDir, "bin", "python");
+  return process.platform === "win32" ? join(venvDir, "Scripts", "python.exe") : join(venvDir, "bin", "python");
 }
 
 function basePython() {
-  const names = [process.env.NP_LAYA_BASE_PYTHON, "python3.13", "python3.12", "python3.11", "python3.10", "python3"];
+  const names = [process.env.NP_LAYA_BASE_PYTHON, "python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
   for (const name of names) {
     if (!name) continue;
-    const probe = spawnSync(name, ["-c", "import sys;print(sys.version_info[0],sys.version_info[1])"], { encoding: "utf8" });
+    const probe = spawnSync(name, ["-c", "import sys;print(sys.version_info[0],sys.version_info[1])"], { encoding: "utf8", timeout: 5000, windowsHide: true });
     if (probe.status !== 0) continue;
     const [major, minor] = String(probe.stdout).trim().split(/\s+/).map(Number);
     if (major === 3 && minor >= 10) return name;

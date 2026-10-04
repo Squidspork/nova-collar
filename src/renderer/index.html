@@ -356,6 +356,15 @@
         </div>
       </div>
     </div>
+    <dialog id="approval-dialog" aria-labelledby="approval-title" aria-describedby="approval-reason">
+      <p id="approval-source"></p>
+      <h2 id="approval-title">Permission needed</h2>
+      <p id="approval-reason"></p>
+      <pre id="approval-detail"></pre>
+      <p class="approval-note">Allow once approves only the action shown. Deny leaves it unchanged.</p>
+      <div class="approval-actions"><button type="button" id="approval-deny" autofocus>Deny</button><button type="button" id="approval-allow">Allow once</button></div>
+    </dialog>
+    <script src="approvals.js"></script>
     <script src="vendor/xterm.js"></script>
     <script src="vendor/addon-fit.js"></script>
     <script src="md.js"></script>

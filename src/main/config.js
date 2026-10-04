@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allowServiceUrl, publicHttpsUrl } from "./safe.js";
@@ -41,7 +41,7 @@ export const LOCAL_OLLAMA_MODEL = "qwen3.8:27b-mlx";
 export const MODELS = [
   { id: LOCAL_ID, label: "Local 3.8", hint: "this system" },
   { id: "nova-pup:3.8", label: "Nova 3.8", hint: "remote" },
-  { id: "Grove:27b", label: "Grove 27B", hint: "27B" },
+  { id: "HNL27b", label: "HNL 27B", hint: "27B" },
   { id: "nova-pup", label: "Nova Pup", hint: "chat" },
   { id: "nova-pup:27b", label: "Pup 27B", hint: "27B" },
   { id: "nova-pup:4b", label: "Pup 4B", hint: "fast" },
@@ -52,9 +52,6 @@ const MODEL_ALIASES = {
   "local 3.8": LOCAL_ID,
   "local3.8": LOCAL_ID,
   "local-3.8": LOCAL_ID,
-  "qwen3.8": LOCAL_ID,
-  "qwen3.8:27b": LOCAL_ID,
-  "qwen3.8:27b-mlx": LOCAL_ID,
   "nova3.8": "nova-pup:3.8",
   "nova-3.8": "nova-pup:3.8",
   "nova 3.8": "nova-pup:3.8",
@@ -194,7 +191,9 @@ export function saveKeys({ chatKey, toolsKey, model, chatUrl }) {
     if (!checked.ok) return { ...publicState(), urlRejected: checked.error || "bad url" };
     url = checked.url;
   }
-  return writeEnv(loadConfig(), { chatKey, toolsKey, model, chatUrl: url });
+  const reset = model !== undefined || chatUrl !== undefined
+    ? { fastUrl: "", fastModel: "", fastKey: "", thinkUrl: "", thinkModel: "", thinkKey: "" } : {};
+  return writeEnv(loadConfig(), { ...reset, chatKey, toolsKey, model, chatUrl: url });
 }
 
 export function saveLocalModel({ url, model }) {
@@ -203,6 +202,9 @@ export function saveLocalModel({ url, model }) {
     localUrl: String(url || "").replace(/\/$/, ""),
     localModel: String(model || "").trim(),
     model: LOCAL_ID,
+    // Local selection owns the whole turn; old remote roles must not keep routing it.
+    fastUrl: "", fastModel: "", fastKey: "",
+    thinkUrl: "", thinkModel: "", thinkKey: "",
   });
 }
 
@@ -222,7 +224,7 @@ export function saveLane({ lane, model }) {
   }
   const resolved = normalizeModel(id);
   const url = isLocalModel(resolved) ? cfg.localUrl : cfg.chatUrl;
-  return writeEnv(cfg, { [`${which}Model`]: resolved, [`${which}Url`]: url });
+  return writeEnv(cfg, { [`${which}Model`]: isLocalModel(resolved) ? cfg.localModel : resolved, [`${which}Url`]: url, [`${which}Key`]: "" });
 }
 
 export function isSetupDone() {
@@ -261,13 +263,17 @@ export function publicState(cfg = loadConfig()) {
     hasToolsKey: Boolean(cfg.toolsKey),
     hasComfy: Boolean(cfg.comfyUrl || cfg.comfyFallback),
     model: cfg.model,
-    models: modelChoices(cfg.model),
+    models: modelChoices(cfg.model).map((row) => row.id === LOCAL_ID ? { ...row, label: `Local: ${cfg.localModel}` } : row),
     chatUrl: isLocalModel(cfg.model) ? cfg.localUrl : cfg.chatUrl,
     toolsUrl: cfg.toolsUrl,
     local: isLocalModel(cfg.model),
+    localModel: cfg.localModel,
     split: splitLabel(lanesFrom(cfg, chatTarget(cfg))),
-    lanes: { fast: cfg.fastModel || "", think: cfg.thinkModel || "" },
+    providerUrl: cfg.chatUrl,
+    lanes: Object.fromEntries(["fast", "think"].map((lane) => [lane, cfg[`${lane}Url`] === cfg.localUrl && cfg[`${lane}Model`] === cfg.localModel ? LOCAL_ID : cfg[`${lane}Model`] || ""])),
+    laneEndpoints: { fast: cfg.fastUrl, think: cfg.thinkUrl },
     setupDone: isSetupDone(),
     os: process.platform,
+    host: hostname(),
   };
 }

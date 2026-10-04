@@ -75,7 +75,7 @@ export function missingClaims(answer, evidence) {
 
 function evidenceOf(result) {
   if (!result || typeof result !== "object") return "";
-  const hits = result.hits || result.data?.hits || [];
+  const hits = result.hits || result.data?.results || result.data?.hits || [];
   const hitText = hits.map((hit) => [hit.text, hit.content, hit.title, hit.url, hit.snippet].filter(Boolean).join(" ")).join("\n");
   return [result.content, result.text, result.stdout, result.summary, result.blurb, hitText].filter(Boolean).join("\n");
 }
