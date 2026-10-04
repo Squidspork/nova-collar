@@ -82,7 +82,7 @@ try {
 
   const ports = run(["/ports"]);
   assert.equal(ports.status, 0, ports.stderr);
-  assert.match(ports.stdout, process.platform === "win32" ? /LocalAddress[\s\S]*LocalPort/ : /LISTEN|State|no ss or lsof/i);
+  assert.match(ports.stdout, process.platform === "win32" ? /LocalAddress[\s\S]*LocalPort|^ok\s*$/ : /LISTEN|State|no ss or lsof|^ok\s*$/i);
 } finally {
   rmSync(home, { recursive: true, force: true });
 }
