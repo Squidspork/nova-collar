@@ -70,6 +70,7 @@ export function bindTermPid(pid) {
 }
 
 export async function peekShellCwd() {
+  if (process.platform === "win32") return null;
   if (!termPid) return null;
   try {
     const { stdout } = await execFileAsync("lsof", ["-a", "-p", String(termPid), "-d", "cwd", "-Fn"], {

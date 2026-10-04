@@ -1,8 +1,9 @@
 import { execFileSync, spawn } from "node:child_process";
 import { scrubEnv } from "./safe.js";
-import { readdirSync, realpathSync, statSync, unlinkSync } from "node:fs";
+import { mkdtempSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { isWindows, shellLaunch } from "./platform.js";
 
 const TMPS = [...new Set([tmpdir(), "/tmp", "/private/tmp"].map((dir) => {
   try {
@@ -14,7 +15,6 @@ const TMPS = [...new Set([tmpdir(), "/tmp", "/private/tmp"].map((dir) => {
 const MAX_GROWTH = 32 * 1024 * 1024;
 const MAX_FILE = 16 * 1024 * 1024;
 const MAX_WRITE = 8 * 1024 * 1024;
-const ULIMIT_BLOCKS = 131072;
 const HOT = /(?:\byes\b\s*[>|])|(?:while\s*(?:true|:|1))|(?:(?::|\btrue\b)\s*;?\s*do\b)|(?:nohup\b)|(?:&\s*$)/i;
 
 let turn = null;
@@ -70,6 +70,10 @@ function removeFat(files) {
 
 function killGroup(pid) {
   if (!pid) return;
+  if (isWindows) {
+    try { execFileSync("taskkill.exe", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch {}
+    return;
+  }
   for (const sig of ["SIGTERM", "SIGKILL"]) {
     try {
       process.kill(-pid, sig);
@@ -84,6 +88,7 @@ function killGroup(pid) {
 }
 
 function descendants(pid) {
+  if (isWindows) return [];
   const found = new Set();
   const walk = (parent) => {
     let text = "";
@@ -182,13 +187,18 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
   signal = signal || turn?.signal;
   const risky = HOT.test(String(command || ""));
   const budget = Math.min(timeoutMs || (risky ? 12_000 : 90_000), risky ? 12_000 : 90_000);
-  const beforeTmp = tmpShot();
+  // Shared temp directories contain other apps' downloads and installers. Watch
+  // only the private temp directory assigned to this command, never delete theirs.
+  const commandTmp = mkdtempSync(join(tmpdir(), "nova-command-"));
+  const beforeTmp = dirShot(commandTmp);
   const beforeWork = dirShot(cwd || turn?.workdir || homedir());
   return new Promise((resolve) => {
-    const child = spawn("/bin/zsh", ["-lc", `ulimit -f ${ULIMIT_BLOCKS}\n${command}`], {
+    const shell = shellLaunch(command);
+    const child = spawn(shell.file, shell.args, {
       cwd,
-      env: scrubEnv(),
-      detached: true,
+      env: { ...scrubEnv(), TMP: commandTmp, TEMP: commandTmp, TMPDIR: commandTmp },
+      detached: !isWindows,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (turn && child.pid) turn.groups.push(child.pid);
@@ -203,6 +213,7 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
       clearInterval(tick);
       signal?.removeEventListener?.("abort", onAbort);
       if (!result.ok) killGroup(child.pid);
+      try { rmSync(commandTmp, { recursive: true, force: true }); } catch {}
       resolve({
         ...result,
         cwd,
@@ -226,12 +237,12 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
     });
     child.on("error", (error) => finish({ ok: false, error: error.message }));
     child.on("close", (code) => {
-      const tmp = TMPS.map((dir) => growthSince(beforeTmp, dir));
+      const tmp = [growthSince(beforeTmp, commandTmp)];
       const work = growthSince(beforeWork, cwd || turn?.workdir || homedir());
       const disk = [...tmp.flatMap((row) => row.fat), ...work.fat];
       const limited = /file size limit/i.test(stderr);
       if (disk.length || limited) {
-        removeFat(disk);
+        removeFat(tmp.flatMap((row) => row.fat));
         finish({
           ok: false,
           killed: "disk",
@@ -253,13 +264,13 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
     }, budget);
 
     const tick = setInterval(() => {
-      const tmp = TMPS.map((dir) => growthSince(beforeTmp, dir));
+      const tmp = [growthSince(beforeTmp, commandTmp)];
       const work = growthSince(beforeWork, cwd || turn?.workdir || homedir());
       const grew = tmp.reduce((sum, row) => sum + row.grew, 0) + work.grew;
       const disk = [...tmp.flatMap((row) => row.fat), ...work.fat];
       if (grew >= MAX_GROWTH || disk.length) {
         killGroup(child.pid);
-        removeFat(disk);
+        removeFat(tmp.flatMap((row) => row.fat));
         const where = disk[0]?.path || `/tmp grew ${(grew / 1024 / 1024).toFixed(0)} MB`;
         finish({ ok: false, killed: "disk", error: `Stopped a runaway write at ${where}.` });
       }

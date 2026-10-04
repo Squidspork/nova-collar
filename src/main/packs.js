@@ -300,6 +300,11 @@ async function needDocker() {
 }
 
 export async function runPack(name, args) {
+  if (process.platform === "win32") {
+    const { runWindowsPack } = await import("./windows-packs.js");
+    const result = runWindowsPack(name, args);
+    if (result) return result;
+  }
   switch (name) {
     case "host_list":
       return runBash("echo 'local this-system'; awk '/^Host / {print}' ~/.ssh/config 2>/dev/null | head -40");

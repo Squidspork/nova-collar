@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /** Stop a tool call that is the same work again.
 
 Laya judges the second try, once the checkpoint was trained on the loop
@@ -25,7 +27,10 @@ export function briefArgs(args) {
 }
 
 export function toolSig(name, args) {
-  return `${name}:${briefArgs(args)}`;
+  let full;
+  try { full = JSON.stringify(canon(typeof args === "object" ? args : JSON.parse(String(args || "{}")))); }
+  catch { full = String(args || "{}").trim(); }
+  return `${name}:${full.length <= 180 ? full : createHash("sha256").update(full).digest("hex")}`;
 }
 
 export function loopTrace({ ask, trail, next } = {}) {

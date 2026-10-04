@@ -104,3 +104,5 @@ assert.equal(afterStop({ progressed: false, tries: 3 }), "done");
 assert.match(loopContinueNote(2), /Continue 2 of 3/);
 
 console.log("laya steer ok");
+
+assert.notEqual(toolSig("host_file_write", JSON.stringify({path:"example.txt",content:"a".repeat(500)+"first"})), toolSig("host_file_write", JSON.stringify({path:"example.txt",content:"a".repeat(500)+"second"})), "edits after character 180 are different calls");

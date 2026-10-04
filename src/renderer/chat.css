@@ -230,3 +230,16 @@
   max-height: 260px;
   background: var(--paws);
 }
+
+#approval-dialog { box-sizing: border-box; width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 20px; border: 1px solid #6f887c; border-radius: 16px; background: #101b16; color: #edf6ef; overflow: auto; box-shadow: 0 18px 60px #0009; }
+#approval-dialog::backdrop { background: #000b; }
+#approval-dialog h2 { margin: 10px 0; font: 600 18px/1.3 system-ui; }
+#approval-dialog p { font: 13px/1.5 system-ui; }
+#approval-source, .approval-note { color: #a7c3b4; }
+#approval-detail { max-height: 42vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #08100c; border-radius: 8px; font: 12px/1.5 monospace; user-select: text; }
+.approval-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.approval-actions button { border: 1px solid #718e7d; border-radius: 8px; padding: 10px 18px; color: #eef8f0; background: #1c3026; cursor: pointer; font: 600 13px system-ui; }
+#approval-allow { color: #072619; background: #4bdd97; }
+.approval-actions button:focus-visible { outline: 3px solid #b3f6d0; outline-offset: 3px; }
+
+.model-active { margin: 0 0 10px; padding: 10px; border: 1px solid #365247; border-radius: 8px; color: #d5f4e5; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }

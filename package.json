@@ -1,9 +1,9 @@
 {
   "name": "novapup",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "license": "Apache-2.0",
   "private": true,
-  "description": "Nova Collar — Hungry Nova Labs agent window: chat, terminal, this system",
+  "description": "Nova Collar \u2014 Hungry Nova Labs agent window: chat, terminal, this system",
   "type": "module",
   "main": "src/main/index.js",
   "bin": {
@@ -20,22 +20,24 @@
     "start": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && electron .",
     "setup": "node src/cli/np.js install",
     "np": "node src/cli/np.js",
-    "pack": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && python3 scripts/make-icon.py && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish never && xattr -cr \"dist/mac-arm64/Nova Collar.app\"",
-    "release": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && python3 scripts/make-icon.py && electron-builder --mac dmg zip --arm64 --publish never",
-    "release:win": "node scripts/vendor-xterm.js && electron-builder --win nsis zip --x64 --publish never",
-    "release:linux": "node scripts/vendor-xterm.js && electron-builder --linux AppImage deb --x64 --publish never"
+    "pack": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish never && xattr -cr \"dist/mac-arm64/Nova Collar.app\"",
+    "release": "node scripts/vendor-xterm.js && node scripts/build-mac-control.js && electron-builder --mac dmg zip --arm64 --publish never",
+    "release:win": "node scripts/vendor-xterm.js && electron-builder --win nsis zip --x64 --publish never -c.npmRebuild=false",
+    "release:linux": "node scripts/vendor-xterm.js && electron-builder --linux AppImage deb --x64 --publish never",
+    "test": "node scripts/test.mjs",
+    "test:app": "node scripts/vendor-xterm.js && electron scripts/test-app.mjs"
   },
   "author": "Hungry Nova",
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "electron-updater": "^6.8.9",
-    "node-pty": "^1.0.0",
+    "node-pty": "^1.1.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
-    "electron": "^36.9.5",
+    "electron": "43.7.7",
     "electron-builder": "^26.0.12"
   },
   "build": {
@@ -150,5 +152,8 @@
         }
       ]
     }
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

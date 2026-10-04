@@ -19,6 +19,23 @@ const COMPUTER_ACTIONS = new Set([
   "guide",
 ]);
 
+/** web_search needs q. query and question are accepted names for it. A missing q stays missing. */
+export function searchArgs(name, raw) {
+  if (name !== "web_search" && name !== "docs_search") return raw;
+  const args = raw && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  if (!Object.keys(args).length && typeof raw === "string" && raw.trim()) {
+    try {
+      Object.assign(args, JSON.parse(raw));
+    } catch {
+      /* a broken argument stays empty */
+    }
+  }
+  const named = String(args.q || args.query || args.question || "").replace(/\s+/g, " ").trim();
+  if (!named) return raw;
+  const next = { ...args, q: named.slice(0, 400) };
+  return typeof raw === "string" || raw == null ? JSON.stringify(next) : next;
+}
+
 export function isHnlTool(name) {
   return (
     name === "web_search" ||
@@ -60,7 +77,11 @@ export async function runHnlTool(name, args, cfg) {
     return { ok: false, error: "No tools key. Add one in settings if you connect your own tools." };
   }
   const toolId = name.startsWith("computer_") || name === "computer" ? "computer" : name;
-  const body = { ...args };
+  const filled = searchArgs(name, args);
+  const body = filled && typeof filled === "object" ? { ...filled } : { ...args };
+  if ((name === "web_search" || name === "docs_search") && !String(body.q || "").trim()) {
+    return { ok: false, error: "q required" };
+  }
   if (name.startsWith("computer_")) {
     body.action = name.slice("computer_".length);
   }

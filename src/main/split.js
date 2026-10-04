@@ -15,6 +15,10 @@ function endpoint(rawUrl, model, cfg, laneKey) {
   };
 }
 
+export function smallModel(id) {
+  return /(?:^|[:/._-])(?:0\.[0-9]+|[1-7](?:\.[0-9]+)?)b(?:$|[:/._-])/i.test(String(id || ""));
+}
+
 export function shortModel(id) {
   const parts = String(id || "").split("/").filter(Boolean);
   return parts[parts.length - 1] || "";
@@ -28,7 +32,7 @@ export function shortModel(id) {
 export function lanesFrom(cfg, chat) {
   const fast = endpoint(cfg.fastUrl, cfg.fastModel, cfg, cfg.fastKey);
   let think = endpoint(cfg.thinkUrl, cfg.thinkModel, cfg, cfg.thinkKey);
-  if (!think && fast && chat?.url && chat?.model && chat.model !== fast.model) {
+  if (!think && fast && chat?.url && chat?.model && (chat.model !== fast.model || chat.url !== fast.url)) {
     think = {
       url: chat.url,
       model: chat.model,
@@ -38,7 +42,7 @@ export function lanesFrom(cfg, chat) {
   }
   if (fast) fast.role = "fast";
   if (think) think.role = "think";
-  const on = Boolean(fast && think && fast.model !== think.model);
+  const on = Boolean(fast && think && (fast.model !== think.model || fast.url !== think.url));
   return { on, fast: on ? fast : null, think: on ? think : null };
 }
 

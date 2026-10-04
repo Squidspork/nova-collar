@@ -1,3 +1,4 @@
+import { shellHint } from "./platform.js";
 import { basename } from "node:path";
 import { chatTarget, isLocalModel, loadConfig, normalizeModel, readMemory } from "./config.js";
 import { formatIntuition, readIntuition } from "./intuition.js";
@@ -9,14 +10,15 @@ import { layaAuditTrained, layaGoalTrained, layaLoopTrained, readLaya } from "./
 import { afterStop, briefArgs, changedSince, gaveUpEarly, LOOP_CONTINUES, loopContinueNote, loopFromLaya, loopTrace, shouldStopLoop, toolSig } from "./laya-loop.js";
 import { acceptRestate, answerFromAsk, auditFromLaya, auditNudge, auditTrace, claimLine, dodgesResult, earlierAnswer, evidenceDraft, failureGoal, GOAL_STEP_SYSTEM, goalFromLaya, goalHalt, goalNudge, goalStepFromText, goalStepTrace, goalTrace, planAudit, plainResult, settleAudit, settleGoalStep, toolNote, toPlain, unprovenAnswer } from "./goal.js";
 import { steerFromLaya, watchJailbreak } from "./laya-steer.js";
-import { HASH_ROUNDS, lanesFrom, pathBetween, planDone, shortModel } from "./split.js";
+import { HASH_ROUNDS, lanesFrom, pathBetween, planDone, shortModel, smallModel } from "./split.js";
 import { onlineAsk, pinPublicHost, plainTurn, rewriteAsk, servesAsk, skipNote, toolsForAsk, tunnelTurn, wantedTools } from "./serve.js";
 import { getWorkdir } from "./workdir.js";
 import { cleanText, fence, redactSecrets, safePack } from "./safe.js";
-import { applyToolDelta, finishToolCalls } from "./tool-calls.js";
+import { applyToolDelta, finishToolCalls, requiredFields, unfinishedArgs } from "./tool-calls.js";
+import { pushThink, streamPiece, thoughtLoop } from "./reason.js";
 import { admitsUnknown, createGround, FACT_LAW, factAsk } from "./ground.js";
 import { censorPass, codeAsk, createHarness, expectFromAsk, extractAsks, inventedPrint, readJobSpec, wrongWriteBlame } from "./harness.js";
-import { runHnlTool } from "./hnl.js";
+import { runHnlTool, searchArgs } from "./hnl.js";
 import { operatorDoctrine, playbookOf } from "./playbooks.js";
 import { formatPackLessons, lessonsFor } from "./pack.js";
 import { packBrief } from "./tasks.js";
@@ -107,6 +109,7 @@ function systemPrompt(memory, { local = false, bot = null, role = "" } = {}) {
     "Do not call bash, read_file, or write_file.",
     "Code harness (DeepSeek-style): read once, smallest patch. Engine compiles and run-probes after every write, then checks the ask checklist. If harness fails, fix that error only. Final line starts with PASS or FAIL and names the check. Never claim done with open asks. Do not expand harness/intuition/safe — those stay human-gated.",
     FACT_LAW,
+    "Risky commands and broad file replacements pause for the user’s Allow once / Deny decision. A denial ends the task; never try another tool to bypass it.",
     "Files stay in the window working directory. set_workdir before writing somewhere else.",
     "Safety: never background a job. Never redirect a loop or yes/while-true to a file. Never write to /tmp for logs.",
     "",
@@ -156,45 +159,19 @@ function waitTick(signal, ms) {
   });
 }
 
-function pushThink(filter, chunk) {
-  filter.buf += chunk;
-  let out = "";
-  while (filter.buf.length) {
-    if (filter.hide) {
-      const end = filter.buf.indexOf("</think>");
-      if (end < 0) {
-        filter.buf = filter.buf.slice(-8);
-        return out;
-      }
-      filter.buf = filter.buf.slice(end + 8);
-      filter.hide = false;
-      continue;
-    }
-    const start = filter.buf.indexOf("<think>");
-    if (start < 0) {
-      out += filter.buf;
-      filter.buf = "";
-      return out;
-    }
-    out += filter.buf.slice(0, start);
-    filter.buf = filter.buf.slice(start + 7);
-    filter.hide = true;
-  }
-  return out;
-}
-
 export async function complete(messages, cfg, onDelta, signal, extra = {}) {
   aborted(signal);
   const target = extra.target || chatTarget(cfg);
+  const lean = target.local || smallModel(target.model);
   const body = {
     model: target.model,
     messages,
-    tools: extra.tools || toolDefs({ local: target.local, search: Boolean(cfg.hnlSearch) }),
+    tools: extra.tools || toolDefs({ local: lean, search: Boolean(cfg.hnlSearch) }),
     tool_choice: extra.toolChoice || "auto",
     stream: true,
   };
-  const predict = extra.predict || (target.local ? 1536 : 0);
-  const temperature = extra.temperature ?? (target.local ? 0.6 : undefined);
+  const predict = extra.predict || (lean ? 1536 : 0);
+  const temperature = extra.temperature ?? (lean ? 0.6 : undefined);
   // mlx_lm.server reads only the top-level fields and stops at 512 tokens without max_tokens.
   if (predict) body.max_tokens = predict;
   if (temperature !== undefined) body.temperature = temperature;
@@ -206,60 +183,109 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
       num_predict: predict,
     };
   }
-  const timeout = signal ? AbortSignal.any([AbortSignal.timeout(180_000), signal]) : AbortSignal.timeout(180_000);
+  // Silence cuts the turn. Tokens keep it open, up to the gateway's own half hour.
+  const quiet = new AbortController();
+  const cap = AbortSignal.timeout(30 * 60 * 1000);
+  const linked = AbortSignal.any([quiet.signal, cap, ...(signal ? [signal] : [])]);
+  let quietTimer = setTimeout(() => quiet.abort(), 180_000);
+  const bump = () => {
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(() => quiet.abort(), 180_000);
+  };
   const headers = {
     authorization: `Bearer ${target.key}`,
     "content-type": "application/json",
   };
-  let response = await fetch(`${target.url}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: timeout,
-  });
-  if (!response.ok && extra.toolChoice && extra.toolChoice !== "auto") {
-    body.tool_choice = "auto";
+  let response;
+  try {
     response = await fetch(`${target.url}/chat/completions`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: timeout,
+      signal: linked,
     });
-  }
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(redactSecrets(text).slice(0, 800) || `HTTP ${response.status}`);
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let content = "";
-  const think = { buf: "", hide: false };
-  const calls = new Map();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const chunk = parseSseLine(line.trim());
-      if (!chunk || chunk === "[DONE]") continue;
-      const delta = chunk.choices?.[0]?.delta || {};
-      if (delta.content) {
-        const text = target.local ? pushThink(think, delta.content) : delta.content;
-        if (text) {
-          content += text;
-          onDelta?.(text);
-        }
-      }
-      for (const part of delta.tool_calls || []) applyToolDelta(calls, part);
+    if (!response.ok && extra.toolChoice && extra.toolChoice !== "auto") {
+      body.tool_choice = "auto";
+      response = await fetch(`${target.url}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: linked,
+      });
     }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(redactSecrets(text).slice(0, 800) || `HTTP ${response.status}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    let reason = "";
+    const think = { buf: "", hide: false };
+    const calls = new Map();
+    const note = (piece) => {
+      const grown = streamPiece(reason, piece);
+      if (!grown.added) return;
+      bump();
+      reason = grown.text;
+      extra.onReason?.(grown.added);
+      if (thoughtLoop(reason)) {
+        const error = new Error("Thinking started repeating, so that turn was cut.");
+        error.name = "ThoughtLoop";
+        quiet.abort(error);
+        throw error;
+      }
+    };
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const chunk = parseSseLine(line.trim());
+        if (!chunk || chunk === "[DONE]") continue;
+        const delta = chunk.choices?.[0]?.delta || {};
+        note(delta.reasoning_content || delta.reasoning || "");
+        if (delta.content) {
+          const split = pushThink(think, delta.content);
+          note(split.thought);
+          if (split.answer) {
+            const grown = streamPiece(content, split.answer);
+            if (grown.added) {
+              bump();
+              content = grown.text;
+              onDelta?.(grown.added);
+            }
+          }
+        }
+        if (delta.tool_calls?.length) bump();
+        for (const part of delta.tool_calls || []) applyToolDelta(calls, part);
+      }
+    }
+    // A partial opening tag at EOF is ordinary answer text.
+    if (think.buf && !think.hide) { content += think.buf; onDelta?.(think.buf); }
+    return {
+      content,
+      tool_calls: finishToolCalls(calls, { max: extra.maxTools || (lean ? 3 : 6) }),
+    };
+  } catch (error) {
+    if (error?.name === "ThoughtLoop") throw error;
+    if (signal?.aborted) {
+      const stopped = new Error("Stopped.");
+      stopped.name = "AbortError";
+      throw stopped;
+    }
+    if (quiet.signal.aborted) {
+      const stalled = new Error("The model went quiet.");
+      stalled.name = "TimeoutError";
+      throw stalled;
+    }
+    throw error;
+  } finally {
+    clearTimeout(quietTimer);
   }
-  return {
-    content,
-    tool_calls: finishToolCalls(calls, { max: extra.maxTools || (target.local ? 3 : 6) }),
-  };
 }
 
 function refuseWatch(emit) {
@@ -309,11 +335,11 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const cfg = loadConfig();
   if (extra.model) cfg.model = normalizeModel(extra.model);
   const lanes = lanesFrom(cfg, chatTarget(cfg));
-  const thinkRemote = lanes.on && !lanes.think.local;
-  if ((thinkRemote || (!lanes.on && !isLocalModel(cfg.model))) && !cfg.chatKey && !cfg.toolsKey) {
-    throw new Error("Save a Hungry Nova chat key first.");
+  const targets = lanes.on ? [lanes.fast, lanes.think] : [chatTarget(cfg)];
+  if (targets.some((target) => !target.local && !target.key)) {
+    throw new Error("Save an API key for the selected provider first.");
   }
-  const local = isLocalModel(cfg.model) || Boolean(lanes.on && lanes.fast.local);
+  const local = isLocalModel(cfg.model) || smallModel(cfg.model) || Boolean(lanes.on && (lanes.fast.local || smallModel(lanes.fast.model)));
   const memory = readMemory();
   const terminal = readTerminal(local ? 1500 : 8000);
   const workdir = getWorkdir();
@@ -372,12 +398,14 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   if (terminal) extras.push(`term:\n${terminal}`);
   const gate = createHarness({
     ask: userText,
-    remoteExec: cfg.toolsKey ? (command) => runHnlTool("computer_exec", { command }, cfg) : null,
+    approvalAware: true,
+    localExec: (command) => executeTool("host_run", { command }, cfg, { ...extra, signal }),
+    remoteExec: cfg.toolsKey ? (command) => executeTool("computer_exec", { command }, cfg, { ...extra, signal, remote: true }) : null,
   });
   const ground = createGround();
   const prior = local ? history.slice(-10) : history;
   const messages = [
-    { role: "system", content: systemPrompt(memory, { local, bot: extra.bot || null, role: extra.role || "" }) },
+    { role: "system", content: systemPrompt(memory, { local, bot: extra.bot || null, role: extra.role || "" }) + "\n" + shellHint + "\nRisky actions pause for Allow once / Deny. A denial ends this task; never bypass it with another tool.\n" },
     ...prior,
     { role: "user", content: extras.length ? `${userText}\n\n${extras.join("\n")}` : userText },
   ];
@@ -396,6 +424,8 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     emit({ type: "tool_result", name: "laya", ok: true, blurb: steer.blurb, detail: steer.detail });
   }
   let rounds = 0;
+  let repairs = 0;
+  let repairName = "";
   let halt = "";
   let goalStatus = goal ? "open" : "";
   let goalNudges = 0;
@@ -416,14 +446,15 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const down = new Set();
   /** One model call on the lane the path picked. If that lane does not answer, the other lane takes the call. */
   async function onLane(path, list, onText, opts = {}) {
-    if (!lanes.on) return complete(list, cfg, onText, signal, opts);
+    if (!lanes.on) return complete(list, cfg, onText, signal, { onReason, ...opts });
     let lane = path === "fast" ? lanes.fast : lanes.think;
     if (down.has(lane.role)) lane = lane === lanes.fast ? lanes.think : lanes.fast;
+    emit({ type: "mood", mood: "think", text: `${shortModel(lane.model)} · ${lane.role}` });
     try {
-      return await complete(list, cfg, onText, signal, { ...opts, target: lane });
+      return await complete(list, cfg, onText, signal, { onReason, ...opts, target: lane });
     } catch (error) {
       const other = lane === lanes.fast ? lanes.think : lanes.fast;
-      if (signal?.aborted || error.name === "AbortError" || down.has(other.role)) throw error;
+      if (signal?.aborted || error.name === "AbortError" || error.name === "ThoughtLoop" || down.has(other.role)) throw error;
       down.add(lane.role);
       emit({ type: "retract" });
       emit({ type: "tool", name: "laya", args: "" });
@@ -434,7 +465,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         blurb: "lane",
         detail: `${shortModel(lane.model)} did not answer · ${shortModel(other.model)} took over`,
       });
-      return complete(list, cfg, onText, signal, { ...opts, target: other });
+      return complete(list, cfg, onText, signal, { onReason, ...opts, target: other });
     }
   }
 
@@ -532,6 +563,9 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     }
     emit({ type: "delta", text: delta });
   };
+  const onReason = (text) => {
+    if (text) emit({ type: "think", text });
+  };
   if (plain && !goal) {
     const outlet = toPlain({ words: earlierAnswer(history) });
     emit({ type: "tool", name: "say_plain", pack: "", args: "" });
@@ -558,8 +592,16 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     if (path === "hash") hashes += 1;
     emit({ type: "mood", mood: "think", text: path === "plan" ? "planning" : path === "hash" ? "hashing" : "thinking" });
     onDelta.writing = false;
-    const reply = await onLane(path, messages, onDelta, callExtra);
+    const reply = await onLane(path, messages, onDelta, {
+      ...(repairName
+        ? { ...callExtra, toolChoice: { type: "function", function: { name: repairName } } }
+        : callExtra),
+      onReason,
+    });
+    repairName = "";
     if (answerOnly) reply.tool_calls = [];
+    // Tool-call prose can claim success before an approval or execution.
+    if (reply.tool_calls.length && reply.content) emit({ type: "retract" });
     if (path === "plan") {
       plans += 1;
       planned = planDone(reply.tool_calls.map((call) => realToolName(call.function.name)), plans);
@@ -899,10 +941,30 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         }
         continue;
       }
+      const gap = unfinishedArgs(call.function.arguments, requiredFields(offered, name));
+      if (gap && repairs < 2) {
+        repairs += 1;
+        if (!repairName) repairName = name;
+        emit({ type: "tool", name, pack: packFor(name), args: call.function.arguments });
+        emit({
+          type: "tool_result",
+          name,
+          ok: false,
+          blurb: "Unfinished",
+          detail: `${name}: ${gap}`,
+        });
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: `Unfinished ${name}: ${gap}. Call ${name} again. The arguments must be one finished JSON object.`,
+        });
+        continue;
+      }
       emit({ type: "mood", mood: moodForTool(name), text: name });
       let callArgs = name === "net_report" && onlineAsk(userText)
         ? pinPublicHost(call.function.arguments)
         : call.function.arguments;
+      callArgs = searchArgs(name, callArgs);
       emit({ type: "tool", name, pack: packFor(name), args: callArgs });
       const blocked = gate.before(name, callArgs);
       const result = blocked
@@ -913,7 +975,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           emit,
           signal,
           depth: 0,
-          complete,
+          complete: (list, config, delta, abortSignal, options) => onLane("fast", list, delta, options),
           bot: extra.bot || null,
           role: extra.role || "",
           remote,
@@ -946,6 +1008,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         lastProof = proof;
         emit({ type: "tool", name: "harness", pack: "host", args: proof.path });
         emit({ type: "tool_result", ...proof });
+        if (proof.held) return { assistant: proof.detail || proof.blurb, messages, held: true, archive, goalStatus };
         toolText += `\n\nHARNESS ${proof.ok ? "PASS" : "FAIL"}: ${proof.detail || proof.blurb}`;
         if (proof.stdout) toolText += `\nstdout:\n${proof.stdout}`;
       }
@@ -967,6 +1030,8 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           ? String(proof.detail || proof.blurb || note || "").slice(0, 800)
           : proof?.ok ? `${note}\nharness PASS${proof.stdout ? ` · stdout: ${proof.stdout}` : ""}` : note,
         passed: Boolean(proof?.ok),
+        filePath: /^(host_file_read|host_file_write)$/.test(name) ? result?.path : undefined,
+        fileBytes: /^(host_file_read|host_file_write)$/.test(name) ? result?.bytes : undefined,
       });
       const want = wantedTools(userText, history);
       if (!goal && want.includes(name) && answerFromAsk(userText, trail)) {

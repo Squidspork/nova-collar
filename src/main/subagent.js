@@ -1,3 +1,4 @@
+import { shellHint } from "./platform.js";
 import { isLocalModel } from "./config.js";
 import { FACT_LAW } from "./ground.js";
 import { compactResult, executeTool, toolDefs } from "./tools.js";
@@ -72,6 +73,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
       role: "system",
       content: [
         `Nova Collar ${pack} sub-agent. Tools only from this pack.`,
+        shellHint,
         `First action: call ${first}. Then only extra tools if the result is not enough.`,
         `After tools, 3 short factual lines. No preamble. ${FACT_LAW}`,
       ].join(" "),
@@ -103,6 +105,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
       }
       emit({ type: "tool", name, pack: packFor(name) || pack, args: call.function.arguments });
       const result = await executeTool(name, call.function.arguments, cfg, {
+        ...ctx,
         depth: 1,
         signal,
         bot: ctx.bot || null,
@@ -120,6 +123,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
         blurb: notes[notes.length - 1].slice(0, 90),
         detail: compactResult(result, { max: 1600 }),
       });
+      if (result.held) return { ok: false, held: true, error: result.error, used, notes };
       messages.push({
         role: "tool",
         tool_call_id: call.id,
