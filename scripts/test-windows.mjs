@@ -1,6 +1,6 @@
 import { createServer } from "node:net";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -34,9 +34,10 @@ if (process.platform === "win32") {
   const { cdCommand } = await import("../src/main/platform.js");
   const { denySecretPath, denySecretCommand } = await import("../src/main/safe.js");
   const dir = mkdtempSync(join(tmpdir(), "nova spaces ' $ "));
-  let result = await runWatched(`${cdCommand(dir)}; (Get-Location).Path`, tmpdir());
+  writeFileSync(join(dir, "location-sentinel.txt"), "LOCATION_FIXTURE_OK");
+  let result = await runWatched(`${cdCommand(dir)}; Get-Content -LiteralPath ./location-sentinel.txt`, tmpdir());
   assert.equal(result.ok, true, JSON.stringify(result));
-  assert.equal(realpathSync(result.stdout.trim()).toLowerCase(), realpathSync(dir).toLowerCase(), JSON.stringify(result));
+  assert.equal(result.stdout.trim(), "LOCATION_FIXTURE_OK", JSON.stringify(result));
   result = await runWatched("Write-Output 'NOVA_POWERSHELL_OK'", dir);
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.match(result.stdout, /NOVA_POWERSHELL_OK/);
