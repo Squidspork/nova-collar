@@ -6,7 +6,10 @@ let raw = "";
 function stripAnsi(text) {
   // OSC records can end with BEL or ST. Matching only BEL can swallow real
   // command output between Omarchy's ST-terminated records and the next title.
-  return stripVTControlCharacters(String(text)).replace(/\r/g, "");
+  // Older supported Node runtimes do not consistently handle adjacent OSC
+  // records, so remove those explicitly before stripping the remaining codes.
+  const withoutOsc = String(text).replace(/(?:\u001b\]|\u009d)[\s\S]*?(?:\u0007|\u001b\\|\u009c)/g, "");
+  return stripVTControlCharacters(withoutOsc).replace(/\r/g, "");
 }
 
 export function bindPty(session) {
