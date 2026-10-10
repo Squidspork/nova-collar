@@ -25,4 +25,8 @@ jobs:
       - if: runner.os != 'Linux'
         run: npm run test:app
       - if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum npm run test:app
+        run: |
+          node node_modules/electron/install.js
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+          xvfb-run --auto-servernum npm run test:app
