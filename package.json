@@ -1,6 +1,6 @@
 {
   "name": "novapup",
-  "version": "0.2.2",
+  "version": "0.2.6",
   "license": "Apache-2.0",
   "private": true,
   "description": "Nova Collar \u2014 Hungry Nova Labs agent window: chat, terminal, this system",

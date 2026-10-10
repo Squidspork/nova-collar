@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld("pup", {
   grow: (size) => ipcRenderer.invoke("window-grow", size),
   setWorkdir: (path) => ipcRenderer.invoke("workdir:set", path),
   pickWorkdir: () => ipcRenderer.invoke("workdir:pick"),
-  refreshModels: () => ipcRenderer.invoke("models:scan"),
+  refreshModels: (options) => ipcRenderer.invoke("models:scan", options),
   useHostedPair: () => ipcRenderer.invoke("models:hosted-pair"),
   setModel: (id) => ipcRenderer.invoke("model", id),
   setLane: (lane, model) => ipcRenderer.invoke("model:lane", { lane, model }),

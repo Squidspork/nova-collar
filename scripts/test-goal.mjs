@@ -178,7 +178,7 @@ const report = evidenceDraft([
 const disk = plainResult("host disk: Filesystem Size Used Avail Capacity\n/dev/disk3s1s1   1.8Ti    16Gi   561Gi     3%    459k  4.3G    0%   /\n/dev/disk3s5     1.8Ti   1.2Ti   561Gi    70%    8.2M  5.9G    0%   /System/Volumes/Data");
 assert.match(disk, /Data volume 70%/);
 const ports = answerFromAsk("what ports are open?", [
-  { name: "host_listen_ports", ok: true, note: "COMMAND PID USER\nrapportd 582 squidspork 16u IPv6 0x1 0t0 TCP *:50602 (LISTEN)\nControlCe 679 squidspork 10u IPv4 0x2 0t0 TCP *:7000 (LISTEN)" },
+  { name: "host_listen_ports", ok: true, note: "COMMAND PID USER\nrapportd 582 example-user 16u IPv6 0x1 0t0 TCP *:50602 (LISTEN)\nControlCe 679 example-user 10u IPv4 0x2 0t0 TCP *:7000 (LISTEN)" },
   { name: "host_disk", ok: true, note: "/dev/disk3s5 1.8Ti 1.2Ti 561Gi 70% 8.2M 5.9G 0% /System/Volumes/Data" },
   { name: "host_facts", ok: true, note: "Darwin\nProductVersion: 26.5.1" },
 ]);
@@ -188,11 +188,11 @@ const mixed = answerFromAsk("what ports are open?", [{
   ok: true,
   note: [
     "COMMAND PID USER",
-    "rapportd 582 squidspork 16u IPv6 0x1 0t0 TCP *:50602 (LISTEN)",
-    "ControlCe 679 squidspork 10u IPv4 0x2 0t0 TCP *:7000 (LISTEN)",
-    "sshd 88 squidspork 5u IPv4 0x3 0t0 TCP *:2222 (LISTEN)",
-    "node 90 squidspork 6u IPv4 0x4 0t0 TCP 127.0.0.1:5317 (LISTEN)",
-    "Python 91 squidspork 7u IPv4 0x5 0t0 TCP 127.0.0.1:3000 (LISTEN)",
+    "rapportd 582 example-user 16u IPv6 0x1 0t0 TCP *:50602 (LISTEN)",
+    "ControlCe 679 example-user 10u IPv4 0x2 0t0 TCP *:7000 (LISTEN)",
+    "sshd 88 example-user 5u IPv4 0x3 0t0 TCP *:2222 (LISTEN)",
+    "node 90 example-user 6u IPv4 0x4 0t0 TCP 127.0.0.1:5317 (LISTEN)",
+    "Python 91 example-user 7u IPv4 0x5 0t0 TCP 127.0.0.1:3000 (LISTEN)",
   ].join("\n"),
 }]);
 assert.match(mixed, /^Listening: sshd 2222, node 5317, Python 3000\./);
@@ -362,3 +362,16 @@ assert.equal(planAudit({claim:"PASS — file is empty.",trail:[emptyTrail[0],{..
 assert.equal(planAudit({claim:"PASS — file is empty.",trail:[emptyTrail[0],{...emptyTrail[1],fileBytes:30}]}).action,"retry");
 assert.equal(planAudit({claim:"PASS — the application works.",trail:emptyTrail}).action,"retry");
 assert.doesNotMatch(unprovenAnswer("PASS — done.\nMore detail.","opposite"),/^PASS/m);
+const editTrail = [
+  { name: "host_file_write", ok: true, filePath: "/scratch/guide.md", fileBytes: 4000 },
+  { name: "host_file_read", ok: true, filePath: "/scratch/guide.md", fileBytes: 4000 },
+];
+const editClaim = "Done — guide.md updated with a Goals section.";
+assert.equal(planAudit({ claim: editClaim, trail: editTrail }).action, "held");
+assert.equal(planAudit({ claim: editClaim, trail: editTrail.slice(0, 1) }).action, "retry");
+assert.equal(planAudit({ claim: editClaim, trail: [...editTrail].reverse() }).action, "retry");
+assert.equal(planAudit({ claim: editClaim, trail: [editTrail[0], { ...editTrail[1], filePath: "/scratch/other.md" }] }).action, "retry");
+assert.equal(planAudit({ claim: editClaim, trail: [editTrail[0], { ...editTrail[1], fileBytes: 3 }] }).action, "retry");
+assert.equal(planAudit({ claim: editClaim, trail: [editTrail[0], { ...editTrail[1], ok: false }] }).action, "retry");
+assert.equal(planAudit({ claim: "PASS — the application works.", trail: editTrail }).action, "retry");
+assert.equal(planAudit({ claim: editClaim, trail: [...editTrail, { ...editTrail[0], fileBytes: 4100 }] }).action, "retry");

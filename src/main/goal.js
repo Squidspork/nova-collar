@@ -503,10 +503,22 @@ export function planAudit({ claim = "", goal = "", trail = [], failure = "", che
   const text = String(claim || "").trim();
   const steps = Array.isArray(trail) ? trail : [];
   const fileDone = FILE_CLAIM.test(text) && steps.some((row) => row && row.ok !== false && FILE_ACT.test(String(row.name || "")));
+  // A verified document edit is evidence even when the model says "updated"
+  // or "added" instead of our old magic words "written" / "read it back".
+  // This does not prove a broader claim that an application works.
+  const editClaim = /\b(updated|saved|edited|appended|added|revised|done)\b/i.test(text)
+    && (/\b(file|document|guide|section|paragraph|checklist)\b/i.test(text)
+      || steps.some(row => row?.filePath && text.includes(String(row.filePath).split(/[\\/]/).at(-1))));
+  const editVerified = editClaim && steps.some((row, i) => {
+    if (row?.name !== "host_file_read" || row.ok === false || !row.filePath || !Number.isFinite(row.fileBytes)) return false;
+    const writeIndex = steps.findLastIndex(item => item?.name === "host_file_write" && item.filePath === row.filePath);
+    const write = steps[writeIndex];
+    return writeIndex >= 0 && writeIndex < i && write.ok !== false && write.fileBytes === row.fileBytes;
+  });
   const emptyClaim = /\b(?:file is (?:now )?empty|emptied|zero[- ]byte|0 bytes)\b/i.test(text);
   const emptyVerified = emptyClaim && steps.some((row, i) => row?.name === "host_file_read" && row.ok !== false && row.filePath && row.fileBytes === 0
     && steps.slice(0, i).some((write) => write?.name === "host_file_write" && write.ok !== false && write.filePath === row.filePath && write.fileBytes === 0));
-  const proven = checked || fileDone || emptyVerified || steps.some((row) => row && row.ok !== false && CHECK.test(String(row.name || "")));
+  const proven = checked || fileDone || editVerified || emptyVerified || steps.some((row) => row && row.ok !== false && CHECK.test(String(row.name || "")));
   const failed = steps.some((row) => row && row.ok === false && CHECK.test(String(row.name || "")));
   if (/\bstopped\b/i.test(text) && (String(goal || "").trim() || String(failure || "").trim())) {
     const internalGoal = String(failure || "").trim()

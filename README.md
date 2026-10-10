@@ -6,6 +6,8 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
+**Current source release: 0.2.6.** This release updates the source, model discovery, and conversation handling. Packaged installers are available from earlier releases; see their version-specific release notes.
+
 **The Mac app.** Signed, notarized builds go to [Releases](https://github.com/Squidspork/nova-collar/releases) as they are cut. Download the `.dmg`, drag Nova Collar to `/Applications`, and open it. For Apple Silicon Macs running macOS 12 or newer. Windows x64 builds are also available; see below.
 
 To build it yourself from the checkout:
@@ -25,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/Squidspork/nova-collar/main/scripts
 
 Clone it and run `scripts/get-collar.sh` from the checkout, or run the one line above. Either way it lands in `~/NovaCollar`, installs the dependencies, and puts `nova-collar` and `np` on your PATH. It does not pick a model for you.
 
-**Windows x64.** Download `Nova-Collar-0.2.2-x64.exe` from [Releases](https://github.com/Squidspork/nova-collar/releases/latest), run the installer, and open Nova Collar from the Start menu. Tested on Windows 11. Electron requires Windows 10 1809 or newer; Windows 10 has not been tested in this release.
+**Windows x64.** The previous packaged installer, `Nova-Collar-0.2.2-x64.exe`, is available from [v0.2.2](https://github.com/Squidspork/nova-collar/releases/tag/v0.2.2). Run it and open Nova Collar from the Start menu. That installer was tested on Windows 11. Electron requires Windows 10 1809 or newer; Windows 10 has not been tested.
 
 To build the Windows installer from source, use Node.js 22.12 or newer:
 
@@ -34,7 +36,7 @@ npm ci
 npm run release:win
 ```
 
-Run `dist/Nova-Collar-0.2.2-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
+Run `dist/Nova-Collar-0.2.6-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
 
 For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 
@@ -50,9 +52,11 @@ nova-collar update laya # fetch the optional decider and set up its Python
 
 Nova Collar is model-agnostic, and the window makes the connection the first thing you do. Choose a provider, paste your key, and connect:
 
-- **Hungry Nova Labs** — paste the key we gave you and connect. One key fills both the fast and thinking roles. Use `nova-pup:4b` for tool work and `nova-pup:27b` for planning and checking. The **4B + 27B** option configures both roles. Refresh the provider model list for the models available to your account.
+- **Hungry Nova Labs** — paste the key we gave you and connect. The picker discovers your account's current models automatically, including MiMo V2.6 Flash, MiniMax M2.7, Hemingway, and Nova Pup Ultrafast when available. Select one model for the entire turn, or use **4B + 27B** to configure separate fast and thinking roles.
 - **OpenAI, OpenRouter, Groq** — your own key; the address is already filled in, and common model names are offered.
 - **Custom (OpenAI-compatible)** — any https endpoint you paste, with your own key and model.
+
+Hosted models refresh on launch, after connecting a provider, and when opening the model picker (at most once every five minutes). **Refresh available models** forces a new scan. The last successful catalog survives restarts and remains available during outages, with an error shown when a refresh fails. Catalogs are scoped to the provider and credential; keys are never stored in the catalog. Saved model and lane IDs remain selectable. Model descriptions appear on hover; models declaring no tool support are labeled **chat only**, and advertised output limits are respected. Discovering a model does not download it or guarantee its backend is online.
 - **On this computer** — scan for a local server you already run (Ollama or LM Studio). No key needed.
 
 That is the whole connection. If I set up Nova Collar on another computer and hand someone a key, the window connects and starts working — no files to edit, nothing else to wire.
@@ -74,7 +78,7 @@ These checks also cover sub-agents, background work, and automatic harness execu
 
 ## Release findings and development
 
-[0.2.2 release notes](CHANGELOG.md) record the Windows findings and fixes shared with Mac. Local and hosted connections stay explicit, the smaller model gets a bounded tool loop, and success claims must follow tool evidence. Windows has PowerShell, file, host, network, and Docker tools; native screen control remains Mac-only. Docker requires a running Docker engine.
+[Release notes](CHANGELOG.md) record model discovery, conversation-history fixes, and the earlier Windows findings shared with Mac. Local and hosted connections stay explicit, the smaller model gets a bounded tool loop, and success claims must follow tool evidence. Windows has PowerShell, file, host, network, and Docker tools; native screen control remains Mac-only. Docker requires a running Docker engine.
 
 For a source checkout, use Node.js 22.12 or newer, `npm ci`, then `npm test`. Tests isolate app settings in temporary folders and do not require a model server or GPU. CI runs the common suites on Mac and Windows, with Windows host-command checks and additional Mac harness checks. Mac release builds need Xcode command-line tools, a Developer ID certificate, and Apple notarization credentials; see [release instructions](docs/releasing.md).
 
@@ -136,11 +140,11 @@ The window stands on other people's work, and the duty their licenses ask is sma
 
 ## About Hungry Nova Labs
 
-Hungry Nova Labs is a veteran-owned technology company in Augusta, Georgia. We work with private AI, Linux systems, hosting, and infrastructure. The reason behind that work is straightforward: build things that help people do something useful while keeping control over their data and the systems they depend on.
+Hungry Nova Labs works with private AI, Linux systems, hosting, and infrastructure. The reason behind that work is straightforward: build things that help people do something useful while keeping control over their data and the systems they depend on.
 
 Being able to talk to a computer naturally is a big step forward. Turning that conversation into working code, a solved problem, or something that makes someone's day easier is where the progress becomes meaningful. That is what I am building Hungry Nova Labs around — the infrastructure underneath a service and the tools people use to reach it, because a good interface needs a dependable system behind it, and a powerful system should be something people can actually use.
 
-The public face of that work is [hungrynovalabs.com](https://hungrynovalabs.com). If you want me, not the company, my credentials are at [msalinas.us](https://msalinas.us). Nova Access is one login for the private apps, portals, and AI you want kept out of a shared public cloud. We design it and we run it, and you can take it with you. You hold the keys. We don't keep a spare.
+The public face of that work is [hungrynovalabs.com](https://hungrynovalabs.com). Nova Access is one login for the private apps, portals, and AI you want kept out of a shared public cloud. We design it and we run it, and you can take it with you. You hold the keys. We don't keep a spare.
 
 Nova Collar is one part of that: a conversation brought closer to an outcome someone can inspect, understand, and use.
 

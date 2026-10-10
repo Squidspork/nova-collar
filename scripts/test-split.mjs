@@ -9,7 +9,7 @@ const chat = {
 };
 const cfg = {
   fastUrl: "http://127.0.0.1:8134/v1",
-  fastModel: "/Users/squidspork/Models/nova-pup-4b-collar",
+  fastModel: "/Users/example-user/Models/nova-pup-4b-collar",
   thinkUrl: "",
   thinkModel: "",
   chatKey: "chat-key",

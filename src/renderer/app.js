@@ -344,7 +344,7 @@ function renderModels(state) {
     if (row.localChoice ? state.local && row.model === state.localModel && row.url === state.chatUrl : row.id === state.model) btn.classList.add("current");
     const title = document.createElement("span");
     title.textContent = row.label || row.id;
-    title.title = row.model || row.label || row.id;
+    title.title = [row.model || row.id, row.description].filter(Boolean).join("\n");
     const hint = document.createElement("em");
     hint.textContent = row.hint || "";
     btn.append(title, hint);
@@ -585,6 +585,10 @@ goalTag?.addEventListener("click", () => {
 });
 
 window.pup.on((event) => {
+  if (event.type === "models") {
+    showModel(event.state.model, event.state.models, event.state.split);
+    if (!models.hidden) renderModels(event.state);
+  }
   if (event.type === "mood") setMood(event.mood, event.text);
   if (event.type === "goal") {
     if (event.check) {
@@ -1105,6 +1109,11 @@ modelBtn.onclick = async () => {
   renderModels(state);
   models.hidden = false;
   modelBtn.classList.add("active");
+  const next = await window.pup.refreshModels({ force: false });
+  if (!models.hidden) {
+    showModel(next.model, next.models, next.split);
+    renderModels(next);
+  }
 };
 
 chatsBtn.onclick = async () => {

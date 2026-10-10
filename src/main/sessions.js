@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import { APP_HOME, ensureHome } from "./config.js";
 import { cleanText, isBotId, isChatId, newChatId, parseSessionId, safeJoin, safePack } from "./safe.js";
+import { cleanModelHistory } from "./model-history.js";
 
 const SESSIONS = () => join(APP_HOME, "sessions");
 const INDEX = () => join(SESSIONS(), "index.json");
@@ -93,6 +94,7 @@ export function readSession(id) {
     created: Number(raw.created) || Date.now(),
     updated: Number(raw.updated) || Date.now(),
     messages: cleanRows(raw.messages),
+    modelMessages: cleanModelHistory(raw.modelMessages),
     goal: cleanText(raw.goal, 400, { singleLine: true }),
     archive: cleanArchive(raw.archive),
   };
@@ -202,13 +204,14 @@ export function persistSession(id, messages, extra = {}) {
     messages: [],
   };
   current.messages = cleanRows(messages);
+  if (extra.modelMessages) current.modelMessages = cleanModelHistory(extra.modelMessages);
   current.updated = Date.now();
   if (extra.title) current.title = cleanText(extra.title, 80, { singleLine: true }) || current.title;
   writeSession(current);
   return current;
 }
 
-export function saveSession(id, messages) {
+export function saveSession(id, messages, extra = {}) {
   const safe = parseSessionId(id);
   if (!safe || isBotId(safe)) return null;
   const current = readSession(safe) || {
@@ -219,6 +222,7 @@ export function saveSession(id, messages) {
     messages: [],
   };
   current.messages = cleanRows(messages);
+  if (extra.modelMessages) current.modelMessages = cleanModelHistory(extra.modelMessages);
   current.updated = Date.now();
   if (current.title === "New chat") {
     current.title = titleFrom(current.messages);
