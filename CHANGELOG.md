@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.7 — Omarchy terminal output
+
+- Preserve command output between shell control sequences on Omarchy and other terminals that use ST-terminated OSC records. The model's terminal reader now strips control codes without discarding the command's result.
+- Cover BEL and ST terminators, terminal colors, and split PTY chunks. Use a cross-platform tool fixture in the engine tests.
+- Add Linux regression and Electron smoke checks alongside Mac and Windows CI.
+
+Validation: 16 automated suites and the Electron window, model picker, native terminal, approvals, and layout smoke test passed on Omarchy.
+
+This is a source release.
+
 ## 0.2.6 — Model discovery and conversation reliability
 
 - Preserve reasoning, tool-call IDs, arguments, and results across tool steps, later turns, and saved sessions. Keep complete tool/result groups when trimming history and retain image/audio attachments.
