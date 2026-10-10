@@ -75,7 +75,9 @@ try {
   assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true, "window must not overflow horizontally");
   console.log(`PASS ${process.platform}: Electron window, model picker, native PTY, approval deny/allow, empty write, layout`);
   clearTimeout(deadline);
-  app.quit();
+  // All assertions are complete. Windows' native PTY can keep graceful
+  // Electron shutdown pending, so explicitly terminate this test process.
+  app.exit(0);
 } catch (error) { console.error(error); clearTimeout(deadline); app.exit(1); }
 
 }
