@@ -19,4 +19,8 @@ appendTerm("\\second output\r\n\x1b]3008;exit=success\x1b\\");
 assert.equal(readTerminal(), "ready\nverified output\nprompt> second output\n",
   "handle control sequences split across PTY chunks");
 
+appendTerm("\x9d3008;type=command\x9cC1 output\r\n\x9d0;title\x07");
+assert.equal(readTerminal(), "ready\nverified output\nprompt> second output\nC1 output\n",
+  "handle single-character OSC and ST controls");
+
 console.log("PASS terminal: colors, BEL/ST shell records, chunk boundaries, preserved command output");
