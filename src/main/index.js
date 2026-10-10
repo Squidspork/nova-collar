@@ -29,6 +29,8 @@ import { ensureOllama, scanLocalModels } from "./setup.js";
 import { cdCommand, shellLaunch, terminalEnv } from "./platform.js";
 import { cancelApprovals, pendingApprovals, resolveApproval, setApprovalNotifier } from "./approvals.js";
 import { completeSpec, readSpec, writeSpec } from "./spec.js";
+import { refreshCatalog } from "./model-catalog.js";
+import { cleanModelHistory } from "./model-history.js";
 
 const pty = createRequire(import.meta.url)("node-pty");
 
@@ -42,6 +44,7 @@ let currentBot = null;
 let localServers = [];
 let turnAbort = null;
 const history = [];
+let inferenceHistory = [];
 
 function send(payload) {
   win?.webContents.send("pup", payload);
@@ -168,15 +171,13 @@ function visibleMessages() {
 }
 
 function modelHistory() {
-  return mergeAssistants(history);
+  return inferenceHistory.length ? cleanModelHistory(inferenceHistory) : mergeAssistants(history);
 }
 
-let hostedCatalog = null;
 function snapshot() {
   const cfg = loadConfig();
   return {
-    ...publicState(),
-    ...(hostedCatalog?.url === cfg.chatUrl ? { models: [{ id: "local-3.8", label: `Local: ${cfg.localModel}`, hint: "this system" }, ...hostedCatalog.models] } : {}),
+    ...publicState(cfg),
     approvals: pendingApprovals(),
     localModels: localServers.flatMap((server) => server.models.map((model) => ({ url: server.url, model }))),
     npReady: existsSync(join(homedir(), ".local", "bin", "np")),
@@ -289,10 +290,22 @@ function useSession(session) {
   currentArchive = Array.isArray(session.archive) ? session.archive : [];
   history.length = 0;
   history.push(...session.messages);
+  inferenceHistory = session.modelMessages?.length ? cleanModelHistory(session.modelMessages) : mergeAssistants(history);
   send({ type: "goal", text: currentGoal, archive: currentArchive.slice(-6) });
 }
 
-function persistTurn(userText, rows = []) {
+function persistTurn(userText, rows = [], modelMessages = null) {
+  if (modelMessages) {
+    modelMessages = [...modelMessages];
+    const last = rows.findLast((row) => row?.role === "assistant");
+    if (last && (modelMessages.at(-1)?.role !== "assistant" || modelMessages.at(-1)?.content !== last.content)) {
+      modelMessages.push({ role: "assistant", content: last.content });
+    }
+  }
+  inferenceHistory = cleanModelHistory(modelMessages || [
+    ...modelHistory(), { role: "user", content: userText },
+    ...rows.filter((row) => row?.role === "assistant"),
+  ]);
   history.push({ role: "user", content: userText });
   for (const row of rows) {
     if (row?.role === "step" && row.name) {
@@ -310,8 +323,8 @@ function persistTurn(userText, rows = []) {
     }
   }
   if (!currentId) return;
-  if (currentBot) persistSession(currentId, history, { title: currentBot.name });
-  else saveSession(currentId, history);
+  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory });
+  else saveSession(currentId, history, { modelMessages: inferenceHistory });
 }
 
 function sleep(ms) {
@@ -361,6 +374,7 @@ app.whenReady().then(async () => {
   onWorkdir((path) => send({ type: "cwd", path }));
   localServers = (await scanLocalModels()).found;
   createWindow();
+  void refreshCatalog(loadConfig()).then(() => send({ type: "models", state: snapshot() }));
   startPty();
   startLaya();
   startAutoUpdate();
@@ -424,33 +438,22 @@ ipcMain.handle("setup:skip", (event) => {
   return { ok: true, state: snapshot() };
 });
 
-ipcMain.handle("keys", (event, keys) => {
+ipcMain.handle("keys", async (event, keys) => {
   if (!fromWindow(event)) return {};
   const result = saveKeys(keys && typeof keys === "object" ? keys : {});
+  if (!result?.urlRejected) await refreshCatalog(loadConfig());
   const state = snapshot();
   return result && result.urlRejected ? { ...state, urlRejected: result.urlRejected } : state;
 });
 
-ipcMain.handle("models:scan", async (event) => {
+ipcMain.handle("models:scan", async (event, options) => {
   if (!fromWindow(event)) return {};
   const cfg = loadConfig();
-  const scan = scanLocalModels().then((report) => { localServers = report.found; });
-  let modelScanError = "";
-  if (cfg.chatUrl && (cfg.chatKey || cfg.toolsKey)) {
-    try {
-      const response = await fetch(`${cfg.chatUrl.replace(/\/$/, "")}/models`, {
-        headers: { authorization: `Bearer ${cfg.chatKey || cfg.toolsKey}` },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const body = await response.json();
-      const models = (Array.isArray(body.data) ? body.data : []).filter((row) => typeof row.id === "string").map((row) => ({ id: row.id, label: row.id, hint: "hosted" }));
-      if (!models.length) throw new Error("No models returned");
-      hostedCatalog = { url: cfg.chatUrl, models };
-    } catch (error) { modelScanError = `Hosted model refresh failed: ${error.message}`; }
-  }
-  await scan;
-  return { ...snapshot(), modelScanError };
+  await Promise.all([
+    scanLocalModels().then(report => { localServers = report.found; }),
+    refreshCatalog(cfg, { force: options?.force !== false }),
+  ]);
+  return snapshot();
 });
 
 ipcMain.handle("models:hosted-pair", (event) => {
@@ -479,8 +482,8 @@ ipcMain.handle("sessions:list", (event) => (fromWindow(event) ? listSessions() :
 
 function parkCurrent() {
   if (!currentId) return;
-  if (currentBot) persistSession(currentId, history, { title: currentBot.name });
-  else saveSession(currentId, history);
+  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory });
+  else saveSession(currentId, history, { modelMessages: inferenceHistory });
 }
 
 ipcMain.handle("sessions:new", (event) => {
@@ -727,7 +730,7 @@ ipcMain.handle("chat", async (event, payload) => {
       currentGoal = writeGoal(currentId, "");
       send({ type: "goal", text: "", archive: currentArchive.slice(-6) });
     }
-    persistTurn(text, tape.finish(result.assistant));
+    persistTurn(text, tape.finish(result.assistant), result.messages?.length ? result.messages : null);
     send({ type: "done", text: result.assistant });
     teachAfter(runText);
     senseAfter(history);

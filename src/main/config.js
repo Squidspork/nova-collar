@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allowServiceUrl, publicHttpsUrl } from "./safe.js";
 import { lanesFrom, splitLabel } from "./split.js";
+import { getCatalog, catalogState } from "./model-catalog.js";
 
 function electronApp() {
   if (!process.versions.electron || process.env.ELECTRON_RUN_AS_NODE) return null;
@@ -251,10 +252,14 @@ export function chatTarget(cfg = loadConfig()) {
   return { url: cfg.chatUrl, model: cfg.model, key: cfg.chatKey || cfg.toolsKey, local: false };
 }
 
-function modelChoices(model) {
-  const id = normalizeModel(model);
-  if (!id || MODELS.some((row) => row.id === id)) return MODELS;
-  return [...MODELS, { id, label: id, hint: "saved" }];
+function modelChoices(cfg) {
+  const catalog = getCatalog(cfg);
+  const rows = catalog ? [MODELS[0], ...catalog.models] : [...MODELS];
+  for (const model of [cfg.model, cfg.fastModel, cfg.thinkModel]) {
+    const id = model && normalizeModel(model);
+    if (id && !rows.some(row => row.id === id)) rows.push({ id, label: id, hint: "saved" });
+  }
+  return rows;
 }
 
 export function publicState(cfg = loadConfig()) {
@@ -263,7 +268,8 @@ export function publicState(cfg = loadConfig()) {
     hasToolsKey: Boolean(cfg.toolsKey),
     hasComfy: Boolean(cfg.comfyUrl || cfg.comfyFallback),
     model: cfg.model,
-    models: modelChoices(cfg.model).map((row) => row.id === LOCAL_ID ? { ...row, label: `Local: ${cfg.localModel}` } : row),
+    models: modelChoices(cfg).map((row) => row.id === LOCAL_ID ? { ...row, label: `Local: ${cfg.localModel}` } : row),
+    ...catalogState(cfg),
     chatUrl: isLocalModel(cfg.model) ? cfg.localUrl : cfg.chatUrl,
     toolsUrl: cfg.toolsUrl,
     local: isLocalModel(cfg.model),

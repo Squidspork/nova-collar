@@ -1,4 +1,6 @@
 import { shellHint } from "./platform.js";
+import { modelMetadata } from "./model-catalog.js";
+import { assistantMessage, cleanModelHistory } from "./model-history.js";
 import { basename } from "node:path";
 import { chatTarget, isLocalModel, loadConfig, normalizeModel, readMemory } from "./config.js";
 import { formatIntuition, readIntuition } from "./intuition.js";
@@ -49,7 +51,7 @@ function moodForTool(name) {
   return "tool";
 }
 
-function systemPrompt(memory, { local = false, bot = null, role = "" } = {}) {
+function systemPrompt(memory, { local = false, bot = null, role = "", model = "" } = {}) {
   if (role === "term") {
     return [
       "You are Nova Collar on the console. The window keeps this same chat. You are the duty officer: short, exact, a little dry.",
@@ -93,6 +95,18 @@ function systemPrompt(memory, { local = false, bot = null, role = "" } = {}) {
       memory.personality.trim().slice(0, 360),
       memory.rules.trim().slice(0, 240),
       formatIntuition(readIntuition(), { local: true }),
+    ].filter(Boolean).join("\n");
+  }
+  if (/(?:^|\/)mimo[-_]/i.test(model)) {
+    // Keep MiMo's native function-tool contract direct while retaining the
+    // user's authored personality and standing rules.
+    return [
+      "You are Nova Collar, a helpful desktop assistant. Complete the user's request using the provided function tools.",
+      "Use host_file_read and host_file_write for files on this computer. computer_* tools refer to a different computer; use them only when requested. Preserve the requested path and existing file contents when editing.",
+      "Tool calls must use the declared function interface and arguments, not code blocks. Do not claim an action succeeded until its tool result confirms it. After the requested work and verification succeed, give a concise final report.",
+      "Read relevant sources before presenting uncertain facts. If an action is denied, stop. If the harness reports a failure, resolve it before claiming success. Follow the user's current request.",
+      memory.personality.trim() ? `Personality:\n${memory.personality.trim()}` : "",
+      memory.rules.trim() ? `User's standing rules:\n${memory.rules.trim()}` : "",
     ].filter(Boolean).join("\n");
   }
   return [
@@ -162,6 +176,7 @@ function waitTick(signal, ms) {
 export async function complete(messages, cfg, onDelta, signal, extra = {}) {
   aborted(signal);
   const target = extra.target || chatTarget(cfg);
+  const metadata = modelMetadata(cfg, target);
   const lean = target.local || smallModel(target.model);
   const body = {
     model: target.model,
@@ -170,7 +185,12 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
     tool_choice: extra.toolChoice || "auto",
     stream: true,
   };
-  const predict = extra.predict || (lean ? 1536 : 0);
+  const requestedTokens = extra.predict || (lean ? 1536 : metadata?.output ? 8192 : 0);
+  const predict = metadata?.output ? Math.min(requestedTokens, metadata.output) : requestedTokens;
+  if (metadata?.tools === false || !body.tools.length) {
+    delete body.tools;
+    delete body.tool_choice;
+  }
   const temperature = extra.temperature ?? (lean ? 0.6 : undefined);
   // mlx_lm.server reads only the top-level fields and stops at 512 tokens without max_tokens.
   if (predict) body.max_tokens = predict;
@@ -204,7 +224,7 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
       body: JSON.stringify(body),
       signal: linked,
     });
-    if (!response.ok && extra.toolChoice && extra.toolChoice !== "auto") {
+    if (!response.ok && body.tools?.length && extra.toolChoice && extra.toolChoice !== "auto") {
       body.tool_choice = "auto";
       response = await fetch(`${target.url}/chat/completions`, {
         method: "POST",
@@ -268,6 +288,7 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
     if (think.buf && !think.hide) { content += think.buf; onDelta?.(think.buf); }
     return {
       content,
+      ...(reason ? { reasoning_content: reason } : {}),
       tool_calls: finishToolCalls(calls, { max: extra.maxTools || (lean ? 3 : 6) }),
     };
   } catch (error) {
@@ -403,9 +424,9 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     remoteExec: cfg.toolsKey ? (command) => executeTool("computer_exec", { command }, cfg, { ...extra, signal, remote: true }) : null,
   });
   const ground = createGround();
-  const prior = local ? history.slice(-10) : history;
+  const prior = cleanModelHistory(history, local ? { maxTurns: 5, maxChars: 40_000 } : {});
   const messages = [
-    { role: "system", content: systemPrompt(memory, { local, bot: extra.bot || null, role: extra.role || "" }) + "\n" + shellHint + "\nRisky actions pause for Allow once / Deny. A denial ends this task; never bypass it with another tool.\n" },
+    { role: "system", content: systemPrompt(memory, { local, bot: extra.bot || null, role: extra.role || "", model: chatTarget(cfg).model }) + "\n" + shellHint + "\nRisky actions pause for Allow once / Deny. A denial ends this task; never bypass it with another tool.\n" },
     ...prior,
     { role: "user", content: extras.length ? `${userText}\n\n${extras.join("\n")}` : userText },
   ];
@@ -469,7 +490,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     }
   }
 
-  async function closeWith(draft, { allowRetry, wantDone }) {
+  async function closeWith(draft, { allowRetry, wantDone, reasoningContent }) {
     const claim = claimLine(draft);
     const plan = planAudit({ claim, goal, trail, failure: openFailure, checked: passedClean() });
     let verdict = null;
@@ -504,6 +525,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       auditTries += 1;
       emit({ type: "tool", name: "laya", args: "" });
       emit({ type: "tool_result", name: "laya", ok: true, blurb: "disprove", detail: settled.reason });
+      messages.push(assistantMessage({ content: draft, reasoning_content: reasoningContent }));
       messages.push({ role: "user", content: auditNudge({ opposite: plan.opposite, internalGoal: plan.internalGoal, goal }) });
       return null;
     }
@@ -512,6 +534,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     const assistant = settled.action === "retry"
       ? unprovenAnswer(censorPass(draft, gate.debt()), plan.opposite)
       : censorPass(draft, gate.debt());
+    messages.push(assistantMessage({ content: assistant, reasoning_content: reasoningContent }));
     emit({ type: "mood", mood: "idle", text: "here" });
     return { assistant, messages: messages.slice(1), goalStatus, archive };
   }
@@ -619,11 +642,11 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     }
     if (path === "plan" && reply.tool_calls.length === 0) {
       emit({ type: "retract" });
-      if (reply.content) messages.push({ role: "assistant", content: reply.content });
+      if (reply.content || reply.reasoning_content) messages.push(assistantMessage(reply));
       continue;
     }
     const keepAdvice = () => {
-      if (path === "hash" && reply.content) messages.push({ role: "assistant", content: reply.content });
+      if (reply.content || reply.reasoning_content) messages.push(assistantMessage(reply));
     };
     if (reply.tool_calls.length === 0) {
       const owed = answerOnly ? [] : gate.debt();
@@ -676,6 +699,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
             blurb: "no source this turn",
             detail: "Search or read before stating a fact.",
           });
+          keepAdvice();
           messages.push({
             role: "user",
             content: "You did not look this up. Search, read a file, or say you don't know. Do not invent facts.",
@@ -694,6 +718,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
             blurb: aboutFolder ? "read this folder" : `not in source: ${missing.join(", ")}`,
             detail: aboutFolder ? "A web page is not this folder." : "Quote the source or say you don't know.",
           });
+          keepAdvice();
           messages.push({
             role: "user",
             content: aboutFolder
@@ -705,7 +730,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       }
       if (gaveUpEarly(reply.content) && goal && rounds < maxRounds && goalJudges < 4) {
         emit({ type: "retract" });
-        messages.push({ role: "assistant", content: reply.content || "" });
+        messages.push(assistantMessage(reply));
         let verdict = null;
         if (layaGoalTrained()) {
           try {
@@ -731,7 +756,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           goalNudges += 1;
           loopTries = 0;
           emit({ type: "retract" });
-          messages.push({ role: "assistant", content: reply.content || "" });
+          messages.push(assistantMessage(reply));
           emit({ type: "tool", name: "laya", args: "" });
           emit({ type: "tool_result", name: "laya", ok: true, blurb: "cleared", detail: "repeat failure reset" });
           const note = openFailure
@@ -742,7 +767,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         }
         if (next === "done" && progressed) {
           emit({ type: "retract" });
-          messages.push({ role: "assistant", content: reply.content || "" });
+          messages.push(assistantMessage(reply));
           halt = "write the result from the tool that worked";
           break;
         }
@@ -750,7 +775,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       if (gaveUpEarly(reply.content) && loopTries < LOOP_CONTINUES && rounds < maxRounds && !trail.some((row) => row.ok !== false && row.name !== "laya")) {
         loopTries += 1;
         emit({ type: "retract" });
-        messages.push({ role: "assistant", content: reply.content || "" });
+        messages.push(assistantMessage(reply));
         emit({ type: "tool", name: "laya", args: "" });
         emit({
           type: "tool_result",
@@ -787,7 +812,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
             emit({ type: "retract" });
             break;
           }
-          messages.push({ role: "assistant", content: reply.content || "" });
+          messages.push(assistantMessage(reply));
           messages.push({ role: "user", content: `Next step: ${settled.step}` });
           continue;
         }
@@ -797,20 +822,18 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           goalNudges += 1;
           emit({ type: "tool", name: "laya", args: "" });
           emit({ type: "tool_result", name: "laya", ok: true, blurb: "goal", detail: verdict?.detail || "keep" });
+          keepAdvice();
           messages.push({ role: "user", content: goalNudge(goal) });
           continue;
         }
       }
-      const closed = await closeWith(reply.content, { allowRetry: true, wantDone: goalStatus === "done" });
+      const closed = await closeWith(reply.content, { allowRetry: true, wantDone: goalStatus === "done", reasoningContent: reply.reasoning_content });
       if (!closed) continue;
       return closed;
     }
-    messages.push({
-      role: "assistant",
-      content: reply.content || "",
-      tool_calls: reply.tool_calls,
-    });
+    messages.push(assistantMessage(reply));
     if (reply.content) emit({ type: "delta", text: "\n" });
+    const attachments = [];
     for (const call of reply.tool_calls) {
       aborted(signal);
       const name = realToolName(call.function.name);
@@ -1044,7 +1067,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         const caption = image.kind === "paint"
           ? "Generated image from Studio ComfyUI. Show this to the user."
           : `${name} screenshot. Coordinates match this image. Origin top-left.`;
-        messages.push({
+        attachments.push({
           role: "user",
           content: [
             { type: "text", text: caption },
@@ -1053,6 +1076,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         });
       }
     }
+    messages.push(...attachments);
     if (halt) break;
   }
   const stuck = goal && goalStatus !== "done"
@@ -1095,7 +1119,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       : (halt
       ? `${openGoal}Same call already ran. ${goal ? "The goal is still open." : "Stopping so this turn does not spin."}`
       : `${openGoal}I hit the tool cap. Say go and I’ll continue from here.`));
-    const closed = await closeWith(draft, { allowRetry: false, wantDone: goalStatus === "done" });
+    const closed = await closeWith(draft, { allowRetry: false, wantDone: goalStatus === "done", reasoningContent: last.reasoning_content });
     return closed || { assistant: draft, messages: messages.slice(1), goalStatus, archive };
   } catch {
     emit({ type: "mood", mood: "idle", text: "here" });

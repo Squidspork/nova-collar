@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.6 — Model discovery and conversation reliability
+
+- Preserve reasoning, tool-call IDs, arguments, and results across tool steps, later turns, and saved sessions. Keep complete tool/result groups when trimming history and retain image/audio attachments.
+- Preserve reasoning during repair and verification steps. Give MiMo a concise function-tool contract while retaining authored personality and rules.
+- Recognize verified document edits from matching write/read evidence, avoiding unnecessary retry loops while keeping checks for failed, stale, or unrelated reads.
+- Include automatic provider model discovery, account-scoped catalog caching, advertised output limits, and chat-only model support introduced during 0.2.3 development.
+- Replace personal identifiers in examples and remove personal profile links from release documentation.
+
+Validation: 15 automated suites and Electron window checks cover model selection, tool history, saved sessions, terminal behavior, approvals, and document verification. Live MiMo tests exercised file creation, read-back, and a follow-up edit. These application fixes do not replace model-server configuration fixes; old conversations cannot recover reasoning that was never saved.
+
+This is a source release. Existing platform installers remain available from earlier releases.
+
+## 0.2.3 — Automatic model discovery
+
+- Discover hosted models on launch, provider connection, and opening the picker. Keep the last successful catalog across restarts and show refresh errors without losing saved model selections.
+- Scope catalogs to provider and account, display model descriptions, and accept newly published model IDs without an app update.
+- Respect advertised output limits and omit tool parameters for chat-only models. Selecting one model clears older fast/thinking routing.
+- Added streaming, file-read, catalog/routing regression coverage, and Electron picker checks. Short model probes do not establish sustained agent reliability.
+
 ## 0.2.2 — Windows support and shared reliability fixes
 
 ### Windows
