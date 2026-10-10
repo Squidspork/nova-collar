@@ -44,7 +44,7 @@ assert(mergeName("host_file_read", "host_file_read") === "host_file_read", "repe
 assert(mergeName("host_fi", "host_file_read") === "host_file_read", "growing name replaces");
 assert(mergeName("host_file_read", "host_fi") === "host_file_read", "shorter echo keeps long name");
 assert(splitToolName("host_file_readhost_file_readbash").join(",") === "host_file_read,host_file_read,bash", "split mashed names");
-assert(splitToolName("host_runmac_windows").join(",") === "host_run,mac_windows", "split host_run + mac_windows");
+assert(splitToolName("host_runhost_facts").join(",") === "host_run,host_facts", "split host_run + host_facts");
 assert(splitToolName("not_a_tool").length === 0, "unknown mash stays empty split");
 assert(knownToolNames().has("host_run") && knownToolNames().has("bash"), "known tools loaded");
 assert(toolDefs().every((row) => row.function.name !== "bash" && row.function.name !== "write_file"), "aliases stay off the public tool list");
@@ -93,10 +93,10 @@ assert(once.length === 1 && once[0].function.name === "host_file_read", "streame
 assert(once[0].function.arguments === "{\"path\":\"x\"}", "args grow instead of stacking");
 
 const mash = new Map();
-applyToolDelta(mash, { index: 0, function: { name: "host_runmac_windows", arguments: "{\"command\":\"ps\"}" } });
+applyToolDelta(mash, { index: 0, function: { name: "host_runhost_facts", arguments: "{\"command\":\"ps\"}" } });
 const split = finishToolCalls(mash, { max: 3 });
 assert(split[0].function.name === "host_run" && split[0].function.arguments.includes("ps"), "first mashed tool keeps args");
-assert(split[1].function.name === "mac_windows", "second mashed tool is split off");
+assert(split[1].function.name === "host_facts", "second mashed tool is split off");
 
 const flood = new Map();
 for (let i = 0; i < 8; i += 1) applyToolDelta(flood, { index: i, function: { name: "host_run", arguments: "{}" } });

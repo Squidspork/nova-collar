@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -22,4 +22,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
       - run: npm test
-      - run: npm run test:app
+      - if: runner.os != 'Linux'
+        run: npm run test:app
+      - if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run test:app

@@ -1,11 +1,12 @@
+import { stripVTControlCharacters } from "node:util";
+
 let pty = null;
 let raw = "";
 
 function stripAnsi(text) {
-  return String(text)
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001b\][^\u0007]*\u0007/g, "")
-    .replace(/\r/g, "");
+  // OSC records can end with BEL or ST. Matching only BEL can swallow real
+  // command output between Omarchy's ST-terminated records and the next title.
+  return stripVTControlCharacters(String(text)).replace(/\r/g, "");
 }
 
 export function bindPty(session) {
