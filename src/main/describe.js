@@ -56,7 +56,14 @@ export function describeTool(name, rawArgs, result = {}) {
   else if (result.killed === "timeout") blurb = "Stopped a hung command.";
   else if (result.killed === "stop") blurb = "Stopped.";
 
-  if (name.startsWith("analysis_")) {
+  if (name.startsWith('network_')) {
+    blurb = !ok ? String(result.error || 'Network tool failed')
+      : name === 'network_capture' ? `Capture ${result.status} · ${result.bytes || 0} bytes`
+      : name === 'network_analyze' ? `${result.counts?.packets || 0} packets · ${result.findings?.length || 0} diagnostic findings`
+      : name === 'network_discover' ? `${result.hosts?.length || 0} responding devices`
+      : name === 'network_open' ? 'Opened in Wireshark' : name.replaceAll('_', ' ');
+    detail = `Arguments\n${JSON.stringify(args, null, 2)}\n\nResult\n${JSON.stringify(result, null, 2)}`;
+  } else if (name.startsWith("analysis_")) {
     blurb = !ok ? String(result.error || "Analysis failed")
       : name === "analysis_open" ? `Opened ${short(result.path, 65)}`
       : name === "analysis_close" ? "Investigation saved; helpers stopped."

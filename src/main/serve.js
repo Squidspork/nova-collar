@@ -1,4 +1,5 @@
 import { analysisAsk, workingProjectAsk } from "./analysis-pack.js";
+import { networkAsk } from './network-pack.js';
 import { factAsk, folderAsk } from "./ground.js";
 
 /** Gate before a tool runs. A specific question only gets the tool that answers it. */
@@ -72,6 +73,7 @@ export function servesAsk(ask, name, history) {
   const tool = String(name || "");
   const q = String(ask || "");
   if (!tool) return false;
+  if (networkAsk(q) && tool.startsWith('network_')) return true;
   if (analysisAsk(q) && tool.startsWith("analysis_")) return true;
   if (workingProjectAsk(q) && tool.startsWith("ghidra_")) return true;
   if (tool === "say_plain") return plainTurn(q, history);
@@ -97,7 +99,7 @@ export function toolsForAsk(tools, ask, history, packNames = null) {
     const plain = tools.filter((row) => toolName(row) === "say_plain");
     return plain.length ? plain : tools;
   }
-  if (packNames?.has("analysis_open") || packNames?.has("ghidra_programs")) {
+  if (packNames?.has("analysis_open") || packNames?.has("ghidra_programs") || packNames?.has('network_capture')) {
     return tools.filter(row => packNames.has(toolName(row)));
   }
   const kept = tools.filter((row) => servesAsk(ask, toolName(row), history));
@@ -115,6 +117,7 @@ export function toolsForAsk(tools, ask, history, packNames = null) {
 
 export function wantedTools(ask, history) {
   const q = String(ask || "");
+  if (networkAsk(q)) return [];
   if (plainTurn(q, history)) return ["say_plain"];
   if (tunnelTurn(q)) return ["host_tunnels"];
   if (folderAsk(q) && factAsk(q)) return ["host_file_read"];

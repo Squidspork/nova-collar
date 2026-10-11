@@ -6,7 +6,7 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
-**Current release: [0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1).** Includes bundled REA and headless Ghidra for software analysis while preserving the existing Ghidra desktop-project route and the model, conversation, and Omarchy terminal fixes. This release adds a signed and notarized Apple Silicon installer, with native debug paths removed and update hashes computed after notarization. Source, dependency pins, license notices, and verification records are included. The earlier Windows installer remains available; it does not include the new analysis bundle.
+**Source version: 0.4.0.** Adds a [Wireshark MCP suite](docs/wireshark.md) for bounded traffic capture, local device discovery, anomaly evidence and opening captures in Wireshark, with visible tool calls and action approvals. Wireshark/TShark and optional Nmap are separately installed. The latest notarized Mac installer is [0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1); it contains REA/Ghidra but does not include the new Wireshark pack. Use the source version for this feature until a newer platform installer is published.
 
 **The Mac app.** Download the `.dmg` from [v0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1), drag Nova Collar to Applications, and open it. This installer is for Apple Silicon Macs running macOS 13.5 or newer and includes the analysis engines. The obsolete v0.2.0 downloads remain withdrawn. Windows x64 builds remain available; see below.
 
@@ -36,7 +36,7 @@ npm ci
 npm run release:win
 ```
 
-The output is `dist/Nova-Collar-0.3.1-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for that dependency. The 0.3.0 analysis bundle has been engine-tested only on Apple Silicon; Windows headless analysis is experimental upstream and the Windows package has not been validated for this release.
+The output is `dist/Nova-Collar-0.4.0-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for that dependency. The 0.3.0 analysis bundle has been engine-tested only on Apple Silicon; Windows headless analysis is experimental upstream and the Windows package has not been validated for this release.
 
 For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 

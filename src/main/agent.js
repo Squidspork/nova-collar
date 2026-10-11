@@ -1,4 +1,5 @@
 import { ANALYSIS_DOCTRINE, steerAnalysis } from "./analysis-pack.js";
+import { NETWORK_DOCTRINE, steerNetwork } from './network-pack.js';
 import { ghidraDoctrine } from "./ghidra-mcp.js";
 import { shellHint } from "./platform.js";
 import { modelMetadata } from "./model-catalog.js";
@@ -398,9 +399,15 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     pack = analysisSteer.pack;
     steer = analysisSteer;
   }
+  const networkSteer = steerNetwork(userText, steer, { locked: Boolean(requested) });
+  if (requested === 'wireshark' || networkSteer?.pack === 'wireshark') {
+    pack = 'wireshark';
+    steer = { ...networkSteer, action: 'pack', pack, toolChoice: '' };
+  }
   if (!cfg.hnlSearch && pack === "hnl") pack = "";
   if (pack) extras.push(`prefer pack ${pack} (hint, others ok)`);
   if (pack === "analysis") extras.push(ANALYSIS_DOCTRINE);
+  if (pack === 'wireshark') extras.push(NETWORK_DOCTRINE);
   if (pack === "ghidra") extras.push(ghidraDoctrine());
   if (!cfg.hnlSearch) extras.push("Search is bring-your-own. Do not call web_search, extract, scrape, or docs_search.");
   if (extra.role === "phone") {
@@ -870,7 +877,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         changed,
         trustLaya: layaLoopTrained(),
       });
-      if (!servesAsk(userText, name, history)) {
+      if (!(pack === 'wireshark' && packNames?.has(name)) && !servesAsk(userText, name, history)) {
         messages.push({
           role: "tool",
           tool_call_id: call.id,

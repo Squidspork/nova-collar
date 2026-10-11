@@ -1,4 +1,5 @@
 import { analysisBundle, analysisManager } from "./analysis-runtime.js";
+import { networkRuntime } from './network-runtime.js';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -402,9 +403,9 @@ app.on("before-quit", event => {
   stopBoard();
   stopLaya();
   turnAbort?.abort();
-  if (!analysisQuitReady && analysisManager.sessions.size) {
+  if (!analysisQuitReady && (analysisManager.sessions.size || networkRuntime.client || networkRuntime.connecting)) {
     event.preventDefault();
-    analysisManager.closeAll().finally(() => { analysisQuitReady = true; app.quit(); });
+    Promise.allSettled([analysisManager.closeAll(), networkRuntime.close()]).finally(() => { analysisQuitReady = true; app.quit(); });
   }
 });
 app.on("window-all-closed", () => app.quit());
@@ -416,6 +417,20 @@ ipcMain.handle("analysis:pick", async event => {
   if (!fromWindow(event)) return { ok: false };
   const picked = await dialog.showOpenDialog(win, { title: "Choose software to inspect", properties: ["openFile", "openDirectory"] });
   return picked.canceled ? { ok: false, cancelled: true } : { ok: true, path: picked.filePaths[0] };
+});
+ipcMain.handle('network:pick', async event => {
+  if (!fromWindow(event)) return { ok: false };
+  const picked = await dialog.showOpenDialog(win, { title: 'Choose a packet capture', properties: ['openFile'], filters: [{ name: 'Packet captures', extensions: ['pcap', 'pcapng'] }] });
+  return picked.canceled ? { ok: false, cancelled: true } : { ok: true, path: picked.filePaths[0] };
+});
+ipcMain.handle('network:action', async (event, body) => {
+  if (!fromWindow(event) || !['network_status', 'network_stop', 'network_open'].includes(body?.name)) return { ok: false, error: 'Unsupported network UI action' };
+  const args = body.name === 'network_open' ? { capture_id: body.capture_id } : {};
+  const { executeTool, compactResult } = await import('./tools.js');
+  send({ type: 'tool', name: body.name, pack: 'wireshark', args: JSON.stringify(args) });
+  const result = await executeTool(body.name, args, loadConfig());
+  send({ type: 'tool_result', name: body.name, pack: 'wireshark', ok: result.ok !== false, blurb: result.error || (body.name === 'network_open' ? 'Opened in Wireshark' : 'Network tools'), detail: compactResult(result, { max: 12000 }) });
+  return result;
 });
 ipcMain.handle("analysis:licenses", async event => {
   if (!fromWindow(event)) return { ok: false };
