@@ -35,6 +35,7 @@ def sign_archives(root, identity):
     root = Path(root)
     signed = []
     rebuilt = []
+    preserved_legacy = []
 
     def archive(path, label, depth=0):
         if depth > 8:
@@ -64,7 +65,13 @@ def sign_archives(root, identity):
                     description = subprocess.check_output(['file', '-b', str(target)], text=True)
                     if 'Mach-O' not in description:
                         continue
-                    command(['xcrun', 'strip', '-S', str(target)])
+                    architectures = subprocess.check_output(['xcrun', 'lipo', '-archs', str(target)], text=True).split()
+                    # Current strip cannot rewrite PowerPC relocations. codesign can
+                    # still sign these upstream slices; preserve their bytes and scan them.
+                    if any(arch.startswith('ppc') for arch in architectures):
+                        preserved_legacy.append(child_label)
+                    else:
+                        command(['xcrun', 'strip', '-S', str(target)])
                     if (str(Path.home()) + '/').encode() in target.read_bytes():
                         raise RuntimeError(f'Native archive member contains a developer home path: {child_label}')
                     args = ['codesign', '--force', '--sign', identity, '--options', 'runtime']
@@ -118,7 +125,7 @@ def sign_archives(root, identity):
     for path in sorted(root.rglob('*')):
         if path.is_file() and not path.is_symlink() and path.suffix.lower() in ARCHIVES:
             archive(path, path.relative_to(root).as_posix())
-    return {'signedNativeMembers': signed, 'repackedArchives': rebuilt}
+    return {'signedNativeMembers': signed, 'repackedArchives': rebuilt, 'legacyMembersWithDebugRecordsPreserved': preserved_legacy}
 
 
 if __name__ == '__main__':
@@ -130,6 +137,6 @@ if __name__ == '__main__':
         result = sign_archives(args.root, args.identity)
     except subprocess.CalledProcessError as error:
         raise SystemExit(error.stderr.decode(errors='replace')) from error
-    result['changes'] = 'Native macOS members were debug-stripped and Developer ID signed for distribution. ZIP/JAR/wheel containers were repacked and wheel RECORD hashes updated. Upstream source and license notices are retained.'
+    result['changes'] = 'Native macOS members were Developer ID signed for distribution. Debug records were stripped except from the listed legacy PowerPC members that current Apple strip cannot rewrite; all members were checked for developer home paths. ZIP/JAR/wheel containers were repacked and wheel RECORD hashes updated. Upstream source and license notices are retained.'
     (args.root / 'MAC-PACKAGING-CHANGES.json').write_text(json.dumps(result, indent=2) + '\n')
     print(f"release signing: signed {len(result['signedNativeMembers'])} embedded native files in {len(result['repackedArchives'])} archives.")
