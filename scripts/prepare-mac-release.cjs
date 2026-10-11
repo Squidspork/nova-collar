@@ -3,6 +3,7 @@ const { readdirSync, openSync, readSync, closeSync, readFileSync } = require("no
 const { join, relative } = require("node:path");
 const { homedir } = require("node:os");
 const { execFileSync } = require("node:child_process");
+const { authArgs, developerIdApplication } = require("./notary.cjs");
 
 function filesUnder(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
@@ -30,4 +31,11 @@ exports.default = async context => {
     stripped++;
   }
   console.log(`release privacy: stripped debug metadata from ${stripped} native files before signing.`);
+  // Apple recursively inspects native code in JARs, extension ZIPs, and Python wheels.
+  // electron-builder only signs files exposed in the application directory.
+  if (authArgs() && process.env.CSC_IDENTITY_AUTO_DISCOVERY !== "false") {
+    const identity = developerIdApplication();
+    if (!identity) throw new Error("Signing dependency archives requires a Developer ID Application identity.");
+    execFileSync("python3", [join(__dirname, "sign-mac-archives.py"), join(resources, "analysis"), "--identity", identity], { stdio: "inherit" });
+  }
 };

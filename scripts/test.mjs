@@ -16,3 +16,8 @@ for (const suite of suites) {
     if (result.status !== 0) process.exitCode = 1;
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
+if (process.platform === "darwin") {
+  const result = spawnSync("python3", ["scripts/test-mac-archives.py"], { stdio: "inherit", timeout: 120_000 });
+  if (result.error) console.error(result.error.message);
+  if (result.status !== 0) process.exitCode = 1;
+}
