@@ -143,6 +143,12 @@ test('real TShark detects synthetic symptoms, pages metadata and excludes payloa
     const report = await runtime.call('network_analyze', { capture_id: imported.capture_id });
     assert.equal(report.ok, true, JSON.stringify(report)); assert.equal(report.counts.packets, 6);
     for (const kind of ['arp_mapping_change', 'dns_errors', 'tcp_delivery', 'tcp_resets']) assert(report.findings.some(f => f.kind === kind), kind);
+    assert.deepEqual(report.findings.find(f => f.kind === 'arp_mapping_change').addresses[0].reply_frames, [1, 2]);
+    const all = await runtime.call('network_packets', { capture_id: imported.capture_id });
+    assert.equal(all.packets[2].source.port, 53);
+    assert.equal(all.packets[2].destination.port, 53000);
+    assert.equal(all.packets[4].expert_level, 'note');
+    assert.equal(all.packets[5].expert_level, 'warning');
     const page = await runtime.call('network_packets', { capture_id: imported.capture_id, limit: 1, filter: 'arp' });
     assert.equal(page.packets.length, 1); assert.equal(page.next_offset, 1);
     const page2 = await runtime.call('network_packets', { capture_id: imported.capture_id, limit: 1, offset: 1, filter: 'arp' });

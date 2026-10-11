@@ -113,7 +113,12 @@ export function parseCaptureInterfaces(raw, osRows = networkInterfaces(), aliase
 export function parsePacketRows(text) {
   return text.trimEnd().split('\n').filter(Boolean).map(line => {
     const cols = line.replace(/\r$/, '').split('\t');
-    return Object.fromEntries(PACKET_KEYS.map((key, i) => [key, (key === 'expert_severity' ? cols[i] || '' : (cols[i] || '').split(',')[0]).slice(0, 256)]));
+    const packet = Object.fromEntries(PACKET_KEYS.map((key, i) => [key, (key === 'expert_severity' ? cols[i] || '' : (cols[i] || '').split(',')[0]).slice(0, 256)]));
+    const endpoint = side => ({ address: packet[`ipv4_${side}`] || packet[`ipv6_${side}`] || packet[`mac_${side}`] || null,
+      port: Number(packet[`tcp_${side}port`] || packet[`udp_${side}port`]) || null });
+    const severity = Math.max(0, ...packet.expert_severity.split(',').map(Number));
+    return { ...packet, source: endpoint('src'), destination: endpoint('dst'),
+      expert_level: ({ 8388608: 'error', 6291456: 'warning', 4194304: 'note', 2097152: 'chat', 1048576: 'comment' })[severity] || 'none' };
   });
 }
 export function summarizePackets(rows) {
@@ -142,7 +147,8 @@ export function summarizePackets(rows) {
   if (counts.retransmissions || counts.missing_segments) findings.push({ kind: 'tcp_delivery', evidence: { retransmissions: counts.retransmissions, missing_segments: counts.missing_segments }, interpretation: 'Possible loss, congestion, or capture gaps; not evidence of an attack by itself.' });
   if (counts.resets) findings.push({ kind: 'tcp_resets', count: counts.resets, interpretation: 'Connections were reset. Normal connection rejection and application behavior can cause this.' });
   if (counts.dns_errors) findings.push({ kind: 'dns_errors', count: counts.dns_errors, responses: counts.dns_responses, interpretation: 'DNS returned nonzero response codes. Failed names are common; investigate repeated failures against a baseline.' });
-  if (changed.size) findings.push({ kind: 'arp_mapping_change', addresses: [...changed].slice(0, 30).map(([ip, macs]) => ({ ip, macs })), interpretation: 'Multiple ARP responders claimed an IP. Check DHCP, failover and duplicate addresses before considering spoofing.' });
+  if (changed.size) findings.push({ kind: 'arp_mapping_change', addresses: [...changed].slice(0, 30).map(([ip, macs]) => ({ ip, macs,
+    reply_frames: rows.filter(p => p.arp_opcode === '2' && p.arp_ip === ip).slice(0, 20).map(p => Number(p.frame)) })), interpretation: 'Separate ARP reply frames associate the same IP with different MAC addresses. Check DHCP, failover and duplicate addresses before considering spoofing.' });
   if (counts.expert_warnings) findings.push({ kind: 'wireshark_expert', count: counts.expert_warnings, interpretation: 'TShark marked warning/error packets. Inspect matching frames in Wireshark; this is a diagnostic flag, not a verdict.' });
   const top = map => [...map].sort((a, b) => b[1] - a[1]).slice(0, 20);
   return { counts, protocols: top(protocols).map(([protocol, packets]) => ({ protocol, packets })),
