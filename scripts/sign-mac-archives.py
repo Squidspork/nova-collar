@@ -109,13 +109,17 @@ def sign_archives(root, identity):
                 output.comment = source.comment
                 for entry in source.infolist():
                     # ZipInfo retains names, timestamps, permissions, and compression.
-                    with output.open(copy.copy(entry), 'w') as destination:
+                    copied = copy.copy(entry)
+                    with output.open(copied, 'w') as destination:
                         if entry.filename in changes:
                             with changes[entry.filename].open('rb') as stream:
                                 shutil.copyfileobj(stream, destination)
                         else:
                             with source.open(entry) as stream:
                                 shutil.copyfileobj(stream, destination)
+                    # zipfile defaults a zero external_attr to owner-only UNIX mode.
+                    # Restore upstream metadata before writing the central directory.
+                    copied.external_attr = entry.external_attr
             mode = path.stat().st_mode
             shutil.copyfile(replacement, path)
             os.chmod(path, mode)

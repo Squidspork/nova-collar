@@ -19,6 +19,7 @@ def zipped(entries):
     with zipfile.ZipFile(data, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in entries.items():
             archive.writestr(name, content)
+            archive.getinfo(name).external_attr = 0
     return data.getvalue()
 
 
@@ -45,6 +46,7 @@ with tempfile.TemporaryDirectory(prefix='nova-sign-test-') as directory:
     assert (bundle / 'plain.jar').read_bytes() == plain
     with zipfile.ZipFile(bundle / 'extension.zip') as outer, zipfile.ZipFile(io.BytesIO(outer.read('lib/engine.jar'))) as inner:
         assert inner.read('LICENSE') == b'retained notice'
+        assert inner.getinfo('LICENSE').external_attr == 0
         assert inner.read('Fixture.class') == java_class
         binary.write_bytes(inner.read('native/libfixture.dylib'))
         subprocess.run(['codesign', '--verify', '--strict', str(binary)], check=True)
