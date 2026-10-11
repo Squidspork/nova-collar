@@ -3,6 +3,8 @@
 ## 0.3.1 — Notarized Apple Silicon distribution
 
 - Publish a signed, notarized Mac installer and ZIP containing the current REA/Ghidra analysis bundle. Retain upstream source, licenses, and notices.
+- Set the installer minimum to macOS 13.5, matching the bundled Node runtime.
+- Submit the app once through the explicit notarization hook.
 - Strip native debug records before signing and reject native binaries that still contain the build user’s home path.
 - Require notarization credentials and a Developer ID identity for public Mac builds. Development packaging remains available separately.
 - Rebuild update blockmaps, sizes, and checksums after the DMG is stapled, so the updater verifies the final downloaded bytes. Add a regression test for this order.

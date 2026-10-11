@@ -119,7 +119,9 @@
       "extendInfo": {
         "CFBundleDisplayName": "Nova Collar",
         "CFBundleName": "Nova Collar"
-      }
+      },
+      "minimumSystemVersion": "13.5",
+      "notarize": false
     },
     "win": {
       "icon": "build/icon.ico",

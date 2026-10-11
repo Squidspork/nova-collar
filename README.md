@@ -8,7 +8,7 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 **Current release: [0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1).** Includes bundled REA and headless Ghidra for software analysis while preserving the existing Ghidra desktop-project route and the model, conversation, and Omarchy terminal fixes. This release adds a signed and notarized Apple Silicon installer, with native debug paths removed and update hashes computed after notarization. Source, dependency pins, license notices, and verification records are included. The earlier Windows installer remains available; it does not include the new analysis bundle.
 
-**The Mac app.** Download the `.dmg` from [v0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1), drag Nova Collar to Applications, and open it. This installer is for Apple Silicon Macs running macOS 12 or newer and includes the analysis engines. The obsolete v0.2.0 downloads remain withdrawn. Windows x64 builds remain available; see below.
+**The Mac app.** Download the `.dmg` from [v0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1), drag Nova Collar to Applications, and open it. This installer is for Apple Silicon Macs running macOS 13.5 or newer and includes the analysis engines. The obsolete v0.2.0 downloads remain withdrawn. Windows x64 builds remain available; see below.
 
 To build it yourself from the checkout:
 
