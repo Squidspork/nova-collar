@@ -1,5 +1,5 @@
 // Exercise the real Electron window and PTY without any model/GPU calls.
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,8 +47,36 @@ try {
   await js('window.pup.refreshModels()');
   assert.ok((await js('window.pup.state()')).models.some(m => m.id === "brand-new-model"));
   await js('window.hidePanels()');
-  await js('window.pup.setupSkip()');
+  await js('Array.from(document.querySelectorAll("#setup-acts button")).find(b => b.textContent === "Skip").click()');
+  await until(() => js('document.getElementById("setup").hidden'));
   await js('window.pup.setupUse({url:"http://127.0.0.1:11434/v1",model:"custom:test"})');
+  const analysisState = await js('window.pup.state()');
+  assert(analysisState.packs.some(p => p.id === 'analysis'));
+  assert(analysisState.packs.some(p => p.id === 'ghidra'));
+  await js('document.getElementById("settings-btn").click()');
+  assert.equal(await js('document.getElementById("settings").hidden'), false);
+  assert.match(await js('document.getElementById("analysis-ready").textContent'), analysisState.analysis.ok ? /Ready.*REA.*Ghidra/ : /unavailable/);
+  await delay(250); // Let the renderer paint the settings sheet before capture.
+  if (process.env.NOVA_ANALYSIS_SCREENSHOT) writeFileSync(process.env.NOVA_ANALYSIS_SCREENSHOT, (await win.webContents.capturePage()).toPNG());
+  const originalDialog = dialog.showOpenDialog;
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [join(cwd, 'chosen app.asar')] });
+  await js('document.getElementById("analysis-pick").click()');
+  await until(() => js('document.getElementById("input").value.includes("chosen app.asar")'));
+  assert.equal(await js('document.getElementById("settings").hidden'), true);
+  assert.equal(await js('document.querySelector("button[data-pack=analysis]").classList.contains("on")'), true);
+  await js('document.getElementById("analysis-pick").click()');
+  await delay(100);
+  assert.equal(await js('document.querySelector("button[data-pack=analysis]").classList.contains("on")'), true, 'Repeated file selection keeps analysis selected');
+  dialog.showOpenDialog = originalDialog;
+  if (analysisState.analysis.ok) {
+    const originalOpen = shell.openPath;
+    let opened = '';
+    shell.openPath = async path => { opened = path; return ''; };
+    assert.equal((await js('window.pup.analysisLicenses()')).ok, true);
+    assert.match(readFileSync(opened, 'utf8'), /Temurin.*source/s);
+    shell.openPath = originalOpen;
+  }
+  await js('document.getElementById("input").value = ""');
   const selected = await js('window.pup.state()');
   assert.equal(selected.localModel, "custom:test");
   const { readTerminal, sendTerminal } = await import("../src/main/term-bridge.js");
@@ -73,7 +101,7 @@ try {
     await until(() => js('!document.getElementById("approval-dialog").open'));
   }
   assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true, "window must not overflow horizontally");
-  console.log(`PASS ${process.platform}: Electron window, model picker, native PTY, approval deny/allow, empty write, layout`);
+  console.log(`PASS ${process.platform}: Electron window, model picker, analysis/Ghidra packs, analysis picker, licenses, native PTY, approval deny/allow, empty write, layout`);
   clearTimeout(deadline);
   // All assertions are complete. Windows' native PTY can keep graceful
   // Electron shutdown pending, so explicitly terminate this test process.

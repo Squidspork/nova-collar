@@ -1,0 +1,8 @@
+{
+  "name": "nova-collar-analysis-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "dependencies": { "rea-agents": "6.4.0" }
+}

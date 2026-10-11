@@ -63,6 +63,12 @@ export function commandNeedsApproval(command) {
 }
 
 export function assessAction(name, args = {}, ctx = {}) {
+  if (name === "analysis_run") return {
+    title: "Allow this REA operation?",
+    reason: "This operation can run a target, write files, or change analysis metadata. Approval applies to this exact operation once.",
+    detail: redactSecrets(JSON.stringify(args, null, 2)),
+    fingerprint: hash(JSON.stringify([name, args])),
+  };
   const command = name === "term_send" ? args.text : args.command;
   if (["host_run", "bash", "term_send", "computer_exec", "docker_exec"].includes(name) || (name === "computer" && args.action === "exec")) {
     if (name === "term_send" || name === "docker_exec" || commandNeedsApproval(command)) return {

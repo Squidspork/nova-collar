@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** NP console. Same chats as the window. Duty officer, not the window voice. */
 
+import { analysisManager } from "../main/analysis-runtime.js";
 import { runTurn } from "../main/agent.js";
 import { loadConfig, saveKeys } from "../main/config.js";
 import { applyGoalCommand } from "../main/goal.js";
@@ -78,7 +79,7 @@ async function runPackLine(name, args) {
   abort = new AbortController();
   beginTurn({ signal: abort.signal, workdir: getWorkdir() });
   try {
-    const result = await runPack(name, args);
+    const result = await runPack(name, args, { signal: abort.signal });
     const ok = result?.ok !== false;
     screen.setStatus(`${name} ${ok ? "ok" : "fail"}`);
     screen.say(packText(result) || (ok ? "ok" : "failed"));
@@ -265,11 +266,13 @@ if (process.argv.includes("--help")) {
   process.exit(0);
 }
 
-leave = () => {
+leave = async (exitCode = 0) => {
+  abort?.abort();
+  await analysisManager.closeAll();
   if (diskTimer) clearInterval(diskTimer);
   screen.stop();
   if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
-  process.exit(0);
+  process.exit(typeof exitCode === 'number' ? exitCode : 0);
 };
 process.on("SIGTERM", leave);
 
@@ -292,7 +295,7 @@ if (process.argv[2] === "update") {
   boot({ quiet: first.type === "pack" || first.type === "help" || first.type === "unknown" });
   handle(asked || "/help").then(() => leave()).catch((error) => {
     process.stderr.write(`${error.message || error}\n`);
-    process.exit(1);
+    return leave(1);
   });
 } else {
   screen.start();

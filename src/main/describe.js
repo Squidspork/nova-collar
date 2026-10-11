@@ -56,7 +56,13 @@ export function describeTool(name, rawArgs, result = {}) {
   else if (result.killed === "timeout") blurb = "Stopped a hung command.";
   else if (result.killed === "stop") blurb = "Stopped.";
 
-  if (name === "bash" || name === "host_run") {
+  if (name.startsWith("analysis_")) {
+    blurb = !ok ? String(result.error || "Analysis failed")
+      : name === "analysis_open" ? `Opened ${short(result.path, 65)}`
+      : name === "analysis_close" ? "Investigation saved; helpers stopped."
+      : args.tool ? `${args.tool} completed` : "Software analysis";
+    detail = clip(JSON.stringify(result, null, 2));
+  } else if (name === "bash" || name === "host_run") {
     const out = firstLine(result.stdout);
     blurb = ok
       ? (out ? `${short(command, 42)} → ${short(out, 48)}` : `Ran ${short(command, 70)}`)

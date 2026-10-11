@@ -1,6 +1,6 @@
 {
   "name": "novapup",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "private": true,
   "description": "Nova Collar \u2014 Hungry Nova Labs agent window: chat, terminal, this system",
@@ -25,7 +25,10 @@
     "release:win": "node scripts/vendor-xterm.js && electron-builder --win nsis zip --x64 --publish never -c.npmRebuild=false",
     "release:linux": "node scripts/vendor-xterm.js && electron-builder --linux AppImage deb --x64 --publish never",
     "test": "node scripts/test.mjs",
-    "test:app": "node scripts/vendor-xterm.js && electron scripts/test-app.mjs"
+    "test:app": "node scripts/vendor-xterm.js && electron scripts/test-app.mjs",
+    "analysis:prepare": "node scripts/prepare-analysis.mjs",
+    "test:analysis": "node --test scripts/test-analysis.mjs",
+    "test:analysis:live": "node scripts/verify-analysis-live.mjs"
   },
   "author": "Hungry Nova",
   "dependencies": {
@@ -33,7 +36,8 @@
     "@xterm/xterm": "^5.5.0",
     "electron-updater": "^6.8.9",
     "node-pty": "^1.1.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "@modelcontextprotocol/sdk": "1.32.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
@@ -55,7 +59,9 @@
       "src/**/*",
       "data/**/*",
       "materials/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE",
+      "NOTICE"
     ],
     "asarUnpack": [
       "**/node_modules/node-pty/**"
@@ -80,6 +86,10 @@
       {
         "from": "data/laya-np-audit.json",
         "to": "laya-np-audit.json"
+      },
+      {
+        "from": "vendor/analysis/${os}-${arch}",
+        "to": "analysis"
       }
     ],
     "directories": {
@@ -151,7 +161,8 @@
           ]
         }
       ]
-    }
+    },
+    "beforePack": "scripts/analysis-before-pack.cjs"
   },
   "engines": {
     "node": ">=22.12.0"

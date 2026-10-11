@@ -1,3 +1,5 @@
+import { ANALYSIS_DOCTRINE, steerAnalysis } from "./analysis-pack.js";
+import { ghidraDoctrine } from "./ghidra-mcp.js";
 import { shellHint } from "./platform.js";
 import { modelMetadata } from "./model-catalog.js";
 import { assistantMessage, cleanModelHistory } from "./model-history.js";
@@ -391,8 +393,15 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   } else if (rewriteAsk(userText)) {
     steer = { ...(steer || {}), toolChoice: "none", action: "answer", blurb: steer?.blurb || "" };
   }
+  const analysisSteer = steerAnalysis(userText, steer, { locked: Boolean(requested) });
+  if (["analysis", "ghidra"].includes(analysisSteer?.pack)) {
+    pack = analysisSteer.pack;
+    steer = analysisSteer;
+  }
   if (!cfg.hnlSearch && pack === "hnl") pack = "";
   if (pack) extras.push(`prefer pack ${pack} (hint, others ok)`);
+  if (pack === "analysis") extras.push(ANALYSIS_DOCTRINE);
+  if (pack === "ghidra") extras.push(ghidraDoctrine());
   if (!cfg.hnlSearch) extras.push("Search is bring-your-own. Do not call web_search, extract, scrape, or docs_search.");
   if (extra.role === "phone") {
     extras.push(cfg.hnlSearch
@@ -1019,7 +1028,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           goalStatus,
         };
       }
-      let toolText = compactResult(result, { max: local ? 4000 : 24_000 });
+      let toolText = compactResult(result, { max: name.startsWith("analysis_") ? 24_000 : (local ? 4000 : 24_000) });
       if (result?.ok === false) {
         const why = String(result.error || result.stderr || result.note || "it failed");
         openFailure = failureGoal({ name, detail: why, goal });

@@ -6,6 +6,8 @@ import { factAsk } from "./ground.js";
 import { denySecretPath, redactSecrets } from "./safe.js";
 import { summarizeTunnels } from "./goal.js";
 import { expandPath, getWorkdir } from "./workdir.js";
+import { analysisAsk, analysisPack, runAnalysis, workingProjectAsk } from "./analysis-pack.js";
+import { ghidraPack, ghidraReady, runGhidra } from "./ghidra-mcp.js";
 
 function incidentDir() {
   const dir = join(APP_HOME, "incidents");
@@ -109,24 +111,32 @@ export const PACKS = [
   },
 ];
 
-const PACK_BY_TOOL = Object.fromEntries(
-  PACKS.flatMap((pack) => pack.tools.map((row) => [row.name, pack.id])),
-);
+function activePacks() {
+  return [...PACKS, analysisPack(), ...(ghidraReady() ? [ghidraPack()] : [])];
+}
+
+function packByTool() {
+  return Object.fromEntries(
+    activePacks().flatMap((pack) => pack.tools.map((row) => [row.name, pack.id])),
+  );
+}
 
 export function packPublic() {
-  return PACKS.map(({ id, title, blurb }) => ({ id, title, blurb }));
+  return activePacks().map(({ id, title, blurb }) => ({ id, title, blurb }));
 }
 
 export function packFor(name) {
-  return PACK_BY_TOOL[name] || "";
+  return packByTool()[name] || "";
 }
 
 export function packToolNames(id) {
-  const pack = PACKS.find((row) => row.id === id);
+  const pack = activePacks().find((row) => row.id === id);
   return new Set((pack?.tools || []).map((row) => row.name));
 }
 
 export function inferPack(text) {
+  if (ghidraReady() && workingProjectAsk(text)) return "ghidra";
+  if (analysisAsk(text)) return "analysis";
   const t = String(text || "").toLowerCase();
   if (/\b(docker|container|compose)\b/.test(t)) return "docker";
   if (/\b(incident|outage|sev[1-4]|on-call)\b/.test(t)) return "incident";
@@ -140,7 +150,7 @@ export function inferPack(text) {
 }
 
 export function isPackTool(name) {
-  return Boolean(PACK_BY_TOOL[name]);
+  return Boolean(packByTool()[name]);
 }
 
 export const LOCAL_PACK_TOOLS = new Set([
@@ -161,6 +171,11 @@ export const LOCAL_PACK_TOOLS = new Set([
   "incident_note",
   "incident_gather",
   "incident_close",
+  ...analysisPack().tools.map(row => row.name),
+  "ghidra_status",
+  "ghidra_programs",
+  "ghidra_decompile",
+  "ghidra_review_function",
 ]);
 
 function leanProps(properties = {}) {
@@ -170,14 +185,14 @@ function leanProps(properties = {}) {
 }
 
 export function packToolDefs(fn, { lean = false } = {}) {
-  return PACKS.flatMap((pack) =>
+  return activePacks().flatMap((pack) =>
     pack.tools
       .filter((row) => !lean || LOCAL_PACK_TOOLS.has(row.name))
       .map((row) =>
         fn(
           row.name,
           lean ? `${pack.title}: ${row.description}` : `${pack.title} pack: ${row.description}`,
-          lean ? leanProps(row.properties) : row.properties,
+          lean && pack.id !== "analysis" ? leanProps(row.properties) : row.properties,
           row.required,
         ),
       ),
@@ -299,7 +314,9 @@ async function needDocker() {
   return null;
 }
 
-export async function runPack(name, args) {
+export async function runPack(name, args, ctx = {}) {
+  if (String(name).startsWith("analysis_")) return runAnalysis(name, args || {}, ctx);
+  if (String(name).startsWith("ghidra_")) return runGhidra(name, args || {});
   if (process.platform === "win32") {
     const { runWindowsPack } = await import("./windows-packs.js");
     const result = runWindowsPack(name, args);
