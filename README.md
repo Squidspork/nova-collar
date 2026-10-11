@@ -6,9 +6,9 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
-**Current source release: 0.2.6.** This release updates the source, model discovery, and conversation handling. Packaged installers are available from earlier releases; see their version-specific release notes.
+**Current source release: 0.2.7.** This release includes model discovery, conversation handling, and Omarchy terminal fixes. The earlier Windows installer remains available; see its version-specific release notes.
 
-**The Mac app.** Signed, notarized builds go to [Releases](https://github.com/Squidspork/nova-collar/releases) as they are cut. Download the `.dmg`, drag Nova Collar to `/Applications`, and open it. For Apple Silicon Macs running macOS 12 or newer. Windows x64 builds are also available; see below.
+**The Mac app.** The old v0.2.0 downloads were withdrawn because native dependencies contained local build-directory metadata. A replacement public installer requires fresh signing and notarization. For now, build from source on an Apple Silicon Mac running macOS 12 or newer. Windows x64 builds remain available; see below.
 
 To build it yourself from the checkout:
 
@@ -36,7 +36,7 @@ npm ci
 npm run release:win
 ```
 
-Run `dist/Nova-Collar-0.2.6-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
+Run `dist/Nova-Collar-0.2.7-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
 
 For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 
@@ -80,7 +80,7 @@ These checks also cover sub-agents, background work, and automatic harness execu
 
 [Release notes](CHANGELOG.md) record model discovery, conversation-history fixes, and the earlier Windows findings shared with Mac. Local and hosted connections stay explicit, the smaller model gets a bounded tool loop, and success claims must follow tool evidence. Windows has PowerShell, file, host, network, and Docker tools; native screen control remains Mac-only. Docker requires a running Docker engine.
 
-For a source checkout, use Node.js 22.12 or newer, `npm ci`, then `npm test`. Tests isolate app settings in temporary folders and do not require a model server or GPU. CI runs the common suites on Mac and Windows, with Windows host-command checks and additional Mac harness checks. Mac release builds need Xcode command-line tools, a Developer ID certificate, and Apple notarization credentials; see [release instructions](docs/releasing.md).
+For a source checkout, use Node.js 22.12 or newer, `npm ci`, then `npm test`. Tests isolate app settings in temporary folders and do not require a model server or GPU. CI runs on Mac, Windows, and Linux, including the Electron window and native terminal checks. Mac release builds need Xcode command-line tools, a Developer ID certificate, and Apple notarization credentials; see [release instructions](docs/releasing.md).
 
 ## How a turn works
 
