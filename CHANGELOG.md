@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — Wireshark MCP suite
+
+- Add a local stdio MCP server and Wireshark pack for installed TShark/dumpcap and optional Nmap. No listening service or bundled network tools.
+- Capture one exact local interface with time, packet, file and snapshot limits; cancel through Stop, turn cancellation or app shutdown. Keep saved captures and reports in the private app directory.
+- Discover responding devices on a directly connected private IPv4 scope of at most 256 addresses using host discovery only.
+- Analyze metadata for TCP symptoms, DNS errors, ARP mapping changes and expert warnings, with explicit coverage and uncertainty. Raw payloads and DNS names are excluded from model context; IP/MAC metadata can reach the selected model.
+- Add capture import, packet pages, Wireshark opening, Settings controls and separate expandable tool cards showing arguments and results. Effects use exact-action approval.
+- Test real MCP transport, synthetic TShark evidence, opt-in loopback capture/cancellation and Electron controls. Linux CI runs the offline TShark test.
+
+This is a source release. The 0.3.1 notarized Mac installer remains available and does not contain this feature. No new platform installers or updater manifests are published here. Live device discovery and capture permissions must be checked on each deployment host.
+
 ## 0.3.1 — Notarized Apple Silicon distribution
 
 - Publish a signed, notarized Mac installer and ZIP containing the current REA/Ghidra analysis bundle. Retain upstream source, licenses, and notices.

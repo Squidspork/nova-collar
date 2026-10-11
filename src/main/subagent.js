@@ -6,8 +6,10 @@ import { packFor } from "./packs.js";
 
 import { analysisPack, ANALYSIS_DOCTRINE } from "./analysis-pack.js";
 import { ghidraPack, ghidraReady } from "./ghidra-mcp.js";
+import { networkPack, NETWORK_DOCTRINE } from './network-pack.js';
 
 const PACKS = {
+  wireshark: networkPack().tools.map(row => row.name),
   analysis: analysisPack().tools.map(row => row.name),
   host: ["host_facts", "host_disk", "host_processes", "host_listen_ports", "host_run", "host_file_read", "host_file_write"],
   net: ["net_report", "http_check", "dns_lookup", "tls_inspect"],
@@ -20,6 +22,7 @@ const PACKS = {
 };
 
 const FIRST_TOOL = {
+  wireshark: 'network_status',
   analysis: "analysis_status",
   ghidra: "ghidra_status",
   host: "host_facts",
@@ -85,6 +88,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
         `Nova Collar ${pack} sub-agent. Tools only from this pack.`,
         shellHint,
         pack === "analysis" ? ANALYSIS_DOCTRINE : "",
+        pack === 'wireshark' ? NETWORK_DOCTRINE : '',
         `First action: call ${first}. Then only extra tools if the result is not enough.`,
         `After tools, 3 short factual lines. No preamble. ${FACT_LAW}`,
       ].join(" "),
@@ -95,7 +99,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
   const local = isLocalModel(cfg.model);
   const extra = { tools, predict: pack === "analysis" ? 1200 : 420, ctx: pack === "analysis" ? 16384 : 8192, temperature: 0.2 };
 
-  for (let round = 0; round < (pack === "analysis" ? 10 : 3); round += 1) {
+  for (let round = 0; round < (['analysis', 'wireshark'].includes(pack) ? 10 : 3); round += 1) {
     const reply = await complete(messages, cfg, null, signal, {
       ...extra,
       toolChoice: round === 0 ? "required" : "auto",

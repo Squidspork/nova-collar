@@ -21,6 +21,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci
+      - if: runner.os == 'Linux'
+        name: Install TShark for offline synthetic capture tests
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
       - run: npm test
       - run: node --test scripts/ghidra-review.test.mjs
       - if: runner.os != 'Linux'

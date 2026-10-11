@@ -11,7 +11,7 @@ function novapupHome() {
 const BOT_ID = /^bot-[a-z0-9]{4,24}$/;
 const CHAT_ID = /^chat-[a-z0-9]{4,24}$/;
 const TASK_ID = /^task-[a-z0-9]{4,24}$/;
-const PACK = /^(term|host|net|docker|incident|hnl|computer|desk|analysis|ghidra)$/;
+const PACK = /^(term|host|net|docker|incident|hnl|computer|desk|analysis|ghidra|wireshark)$/;
 const SECRET_NAME = /(?:^|\/)(?:env|credentials|secret|secrets|\.env(?:\..+)?|.*\.(?:pem|p12|key)$|id_rsa|id_ed25519|id_ecdsa|id_dsa|authorized_keys|known_hosts)$/i;
 const SECRET_CMD = /(?:\.novapup\/env|\bHNL_(?:CHAT|TOOLS|LAB)_?(?:KEY|TOKEN)|\bCOMPUTER_TOKEN|\bLM_STUDIO_API_KEY|\bid_rsa\b|\bid_ed25519\b)/i;
 const SECRET_TEXT = /(?:hnl_[A-Za-z0-9]{8,}|sk-[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._\-+=\/]{12,})/g;

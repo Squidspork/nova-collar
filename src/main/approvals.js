@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { APP_HOME } from "./config.js";
 import { redactSecrets } from "./safe.js";
 import { expandPath, getWorkdir } from "./workdir.js";
+import { NETWORK_EFFECTS, NETWORK_PRIVACY, validateNetworkArgs } from './network-tools.js';
 
 let notify = null;
 const pending = new Map();
@@ -63,6 +64,13 @@ export function commandNeedsApproval(command) {
 }
 
 export function assessAction(name, args = {}, ctx = {}) {
+  if (NETWORK_EFFECTS.has(name)) {
+    const exact = validateNetworkArgs(name, args);
+    const titles = { network_capture: 'Capture traffic on this interface?', network_discover: 'Discover devices in this local scope?', network_import: 'Inspect this capture file?', network_open: 'Open this capture in Wireshark?' };
+    return { title: titles[name],
+      reason: name === 'network_discover' ? 'Sends host-discovery probes to the specified local IPv4 scope. No port scan. IP/MAC results go to the selected model, which may be remote.' : name === 'network_open' ? 'Launches the installed Wireshark application with this saved capture.' : NETWORK_PRIVACY,
+      detail: JSON.stringify(exact, null, 2), fingerprint: hash(JSON.stringify([name, exact])) };
+  }
   if (name === "analysis_run") return {
     title: "Allow this REA operation?",
     reason: "This operation can run a target, write files, or change analysis metadata. Approval applies to this exact operation once.",

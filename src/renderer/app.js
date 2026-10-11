@@ -46,6 +46,7 @@ document.body.dataset.os = window.pup.os || "";
 const packsMachines = document.getElementById("packs-machines");
 const packsWork = document.getElementById("packs-work");
 const MACHINE_PACKS = new Set(["term", "host", "computer", "desk"]);
+const pendingNetworkSteps = new Map();
 const packHint = document.getElementById("pack-hint");
 const PACK_PREFIX = /^Use the \w+ pack\.\s*/i;
 let selectedPack = "";
@@ -136,6 +137,7 @@ function when(ts) {
 
 function paintMessages(messages) {
   chat.innerHTML = "";
+  pendingNetworkSteps.clear();
   live = null;
   pendingStep = null;
   closeTurn();
@@ -234,6 +236,41 @@ document.getElementById("analysis-pick")?.addEventListener("click", async () => 
   input.focus();
 });
 document.getElementById("analysis-licenses")?.addEventListener("click", () => window.pup.analysisLicenses());
+
+function networkDraft(text) {
+  document.getElementById('settings').hidden = true;
+  if (selectedPack !== 'wireshark') setPack('wireshark');
+  input.value = text; growInput(); input.focus();
+}
+document.getElementById('network-inspect')?.addEventListener('click', () => networkDraft('Check the tools and interfaces on this computer, identify my connected wired network, and inspect it for anomalies using bounded traffic analysis and device discovery. Explain the capture scope and evidence.'));
+document.getElementById('network-pick')?.addEventListener('click', async () => {
+  const picked = await window.pup.pickNetworkCapture();
+  if (picked.ok) networkDraft(`Import the packet capture at ${JSON.stringify(picked.path)} and analyze its traffic for anomalies. Explain the evidence and limitations.`);
+});
+async function networkAction(name, id) {
+  const status = document.getElementById('network-ready');
+  try {
+    const result = await window.pup.networkAction(name, id);
+    if (result.ok === false) { status.textContent = result.error || 'Network action failed'; return; }
+    if (name !== 'network_status') { status.textContent = name === 'network_stop' ? (result.stopping ? 'Stopping capture…' : 'No capture running.') : 'Opened in Wireshark.'; return; }
+    status.textContent = Object.entries(result.programs || {}).map(([name, row]) => `${name}: ${row.installed ? (row.working === false ? 'unavailable' : 'installed') : 'missing'}`).join(' · ');
+    const list = document.getElementById('network-captures'); list.replaceChildren();
+    for (const row of result.captures || []) {
+      const item = document.createElement('div');
+      const label = document.createElement('p'); label.className = 'sheet-note';
+      label.textContent = `${row.created} · ${row.interface || 'imported'} · ${row.status} · ${row.capture_id}`;
+      item.appendChild(label);
+      for (const action of ['analyze', 'open in Wireshark']) {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = action; button.disabled = row.status === 'capturing';
+        button.onclick = () => action === 'analyze' ? networkDraft(`Analyze the saved network capture ${row.capture_id} and explain any diagnostic symptoms with their limitations.`) : networkAction('network_open', row.capture_id);
+        item.appendChild(button);
+      }
+      list.appendChild(item);
+    }
+  } catch (error) { status.textContent = error.message || 'Network tools unavailable'; }
+}
+document.getElementById('network-check')?.addEventListener('click', () => networkAction('network_status'));
+document.getElementById('network-stop')?.addEventListener('click', () => networkAction('network_stop'));
 
 function renderPacks(state) {
   const ready = document.getElementById("analysis-ready");
@@ -628,12 +665,20 @@ window.pup.on((event) => {
       live.classList.remove("streaming");
       live = null;
     }
-    pendingStep = addStepCard({ name: event.name, pack: event.pack || "", pending: true, blurb: "working…" }, openTurn());
+    const card = addStepCard({ name: event.name, pack: event.pack || "", pending: true, blurb: "working…", detail: event.name?.startsWith('network_') ? `Arguments\n${event.args || '{}'}` : '' }, openTurn());
+    if (event.name?.startsWith('network_')) {
+      if (!pendingNetworkSteps.has(event.name)) pendingNetworkSteps.set(event.name, []);
+      pendingNetworkSteps.get(event.name).push(card);
+    } else pendingStep = card;
   }
   if (event.type === "tool_result") {
-    if (pendingStep) fillStepCard(pendingStep, event);
-    else addStepCard(event, openTurn());
-    pendingStep = null;
+    if (event.name?.startsWith('network_')) {
+      const card = pendingNetworkSteps.get(event.name)?.shift();
+      if (card?.isConnected) fillStepCard(card, event); else addStepCard(event, openTurn());
+    } else {
+      if (pendingStep) fillStepCard(pendingStep, event); else addStepCard(event, openTurn());
+      pendingStep = null;
+    }
     followChat();
   }
   if (event.type === "shot") {

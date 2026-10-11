@@ -53,6 +53,9 @@ try {
   const analysisState = await js('window.pup.state()');
   assert(analysisState.packs.some(p => p.id === 'analysis'));
   assert(analysisState.packs.some(p => p.id === 'ghidra'));
+  assert(analysisState.packs.some(p => p.id === 'wireshark'));
+  const { networkRuntime } = await import('../src/main/network-runtime.js');
+  assert.equal(networkRuntime.client, null, 'No network helper or capture starts at app launch');
   await js('document.getElementById("settings-btn").click()');
   assert.equal(await js('document.getElementById("settings").hidden'), false);
   assert.match(await js('document.getElementById("analysis-ready").textContent'), analysisState.analysis.ok ? /Ready.*REA.*Ghidra/ : /unavailable/);
@@ -68,6 +71,38 @@ try {
   await delay(100);
   assert.equal(await js('document.querySelector("button[data-pack=analysis]").classList.contains("on")'), true, 'Repeated file selection keeps analysis selected');
   dialog.showOpenDialog = originalDialog;
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [join(cwd, 'synthetic.pcap')] });
+  await js('document.getElementById("network-pick").click()');
+  await until(() => js('document.getElementById("input").value.includes("synthetic.pcap")'));
+  assert.equal(await js('document.querySelector("button[data-pack=wireshark]").classList.contains("on")'), true);
+  assert.equal(networkRuntime.client, null, 'Choosing a capture only drafts the request');
+  dialog.showOpenDialog = originalDialog;
+  await js('document.getElementById("network-inspect").click()');
+  assert.match(await js('document.getElementById("input").value'), /wired network/);
+  assert.equal((await js('window.pup.networkAction("host_run")')).ok, false);
+  const networkStatus = await js('window.pup.networkAction("network_status")');
+  assert.equal(networkStatus.ok, true);
+  assert.equal(networkStatus.active_capture, null);
+  await until(() => js('Boolean(document.querySelector("details[data-name=network_status].ok"))'));
+  await js('document.querySelector("details[data-name=network_status]").open=true');
+  assert.match(await js('document.querySelector("details[data-name=network_status] pre").textContent'), /Arguments[\s\S]*Result[\s\S]*programs/);
+  // Interleaving Stop with a capture must keep each call's own visible card.
+  for (const event of [
+    { type: 'tool', name: 'network_capture', args: '{"interface":"fixture"}' },
+    { type: 'tool', name: 'network_stop', args: '{}' },
+    { type: 'tool_result', name: 'network_stop', ok: true, detail: 'stopping fixture' },
+    { type: 'tool_result', name: 'network_capture', ok: true, detail: 'saved fixture' },
+  ]) win.webContents.send('pup', event);
+  await until(() => js('Boolean(document.querySelector("details[data-name=network_capture].ok"))'));
+  assert.match(await js('document.querySelector("details[data-name=network_capture] pre").textContent'), /interface.*fixture[\s\S]*saved fixture/);
+  assert.match(await js('document.querySelector("details[data-name=network_stop] pre").textContent'), /stopping fixture/);
+  if (process.env.NOVA_NETWORK_SCREENSHOT) {
+    await js('document.getElementById("settings-btn").click(); document.getElementById("network-ready").scrollIntoView({block:"start"})');
+    await delay(300);
+    writeFileSync(process.env.NOVA_NETWORK_SCREENSHOT, (await win.webContents.capturePage()).toPNG());
+    await js('window.hidePanels()');
+  }
+  await networkRuntime.close();
   if (analysisState.analysis.ok) {
     const originalOpen = shell.openPath;
     let opened = '';
@@ -101,7 +136,7 @@ try {
     await until(() => js('!document.getElementById("approval-dialog").open'));
   }
   assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true, "window must not overflow horizontally");
-  console.log(`PASS ${process.platform}: Electron window, model picker, analysis/Ghidra packs, analysis picker, licenses, native PTY, approval deny/allow, empty write, layout`);
+  console.log(`PASS ${process.platform}: Electron window, model picker, analysis/Ghidra/Wireshark packs, capture picker, real MCP status, separate network tool cards, licenses, native PTY, approval deny/allow, empty write, layout`);
   clearTimeout(deadline);
   // All assertions are complete. Windows' native PTY can keep graceful
   // Electron shutdown pending, so explicitly terminate this test process.

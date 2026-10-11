@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld("pup", {
   state: () => ipcRenderer.invoke("state"),
   pickAnalysisTarget: () => ipcRenderer.invoke("analysis:pick"),
   analysisLicenses: () => ipcRenderer.invoke("analysis:licenses"),
+  pickNetworkCapture: () => ipcRenderer.invoke('network:pick'),
+  networkAction: (name, capture_id) => ipcRenderer.invoke('network:action', { name, capture_id }),
   resolveApproval: (id, allowed) => ipcRenderer.invoke("approval:resolve", { id, allowed }),
   saveKeys: (keys) => ipcRenderer.invoke("keys", keys),
   pin: (on) => ipcRenderer.invoke("pin", on),

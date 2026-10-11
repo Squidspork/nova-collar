@@ -79,7 +79,7 @@ function closeTurn() {
 function addStepCard(step, into) {
   const host = into || openTurn();
   const prior = lastStep(host);
-  if (prior && prior.dataset.name === step.name && step.blurb !== "cleared") {
+  if (prior && prior.dataset.name === step.name && step.blurb !== "cleared" && !step.name?.startsWith('network_')) {
     if (step.pending) {
       prior.classList.add("busy");
       prior.classList.remove("land", "ok", "bad");
@@ -112,6 +112,10 @@ function addStepCard(step, into) {
 
 function fillStepCard(card, step) {
   if (!card) return;
+  if (step.name?.startsWith('network_') && !step.detail?.startsWith('Arguments\n')) {
+    const args = card.querySelector('pre')?.textContent || '';
+    step = { ...step, detail: [args.startsWith('Arguments\n') ? args : '', step.detail].filter(Boolean).join('\n\nResult\n') };
+  }
   if (card.dataset.settled === "1" && card.dataset.name === step.name && step.blurb !== "cleared") {
     paintCard(card, stackStep(readCard(card), step));
   } else {

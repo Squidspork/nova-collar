@@ -113,6 +113,11 @@
         <p class="sheet-note" id="analysis-ready">Bundled REA and headless Ghidra.</p>
         <div class="packs"><button type="button" id="analysis-pick">choose an app or file</button><button type="button" id="analysis-licenses">licenses</button></div>
         <p class="sheet-note">Software analysis runs inside Collar. Use the Ghidra projects pack for an existing desktop project.</p>
+        <p class="sheet-sub">Wireshark · local network</p>
+        <p class="sheet-note" id="network-ready">Use installed Wireshark/TShark for traffic analysis. Optional Nmap discovers devices without scanning ports.</p>
+        <div class="packs"><button type="button" id="network-check">check tools &amp; captures</button><button type="button" id="network-inspect">inspect wired network</button><button type="button" id="network-pick">choose capture</button><button type="button" id="network-stop">stop capture</button></div>
+        <p class="sheet-note">Captures stay local; IP/MAC metadata in reports goes to the selected model, which may be remote. Each capture or discovery asks for approval. A switched port usually sees this computer plus broadcasts, not all traffic between devices.</p>
+        <div class="sheet-list" id="network-captures"></div>
         <p class="sheet-sub">personality</p>
         <p class="sheet-note" id="voice-now">How I talk.</p>
         <form class="dossier" id="voice-form">

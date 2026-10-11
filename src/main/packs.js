@@ -8,6 +8,7 @@ import { summarizeTunnels } from "./goal.js";
 import { expandPath, getWorkdir } from "./workdir.js";
 import { analysisAsk, analysisPack, runAnalysis, workingProjectAsk } from "./analysis-pack.js";
 import { ghidraPack, ghidraReady, runGhidra } from "./ghidra-mcp.js";
+import { networkAsk, networkPack, runNetwork } from './network-pack.js';
 
 function incidentDir() {
   const dir = join(APP_HOME, "incidents");
@@ -112,7 +113,7 @@ export const PACKS = [
 ];
 
 function activePacks() {
-  return [...PACKS, analysisPack(), ...(ghidraReady() ? [ghidraPack()] : [])];
+  return [...PACKS, analysisPack(), networkPack(), ...(ghidraReady() ? [ghidraPack()] : [])];
 }
 
 function packByTool() {
@@ -136,6 +137,7 @@ export function packToolNames(id) {
 
 export function inferPack(text) {
   if (ghidraReady() && workingProjectAsk(text)) return "ghidra";
+  if (networkAsk(text)) return 'wireshark';
   if (analysisAsk(text)) return "analysis";
   const t = String(text || "").toLowerCase();
   if (/\b(docker|container|compose)\b/.test(t)) return "docker";
@@ -172,6 +174,7 @@ export const LOCAL_PACK_TOOLS = new Set([
   "incident_gather",
   "incident_close",
   ...analysisPack().tools.map(row => row.name),
+  ...networkPack().tools.map(row => row.name),
   "ghidra_status",
   "ghidra_programs",
   "ghidra_decompile",
@@ -192,7 +195,7 @@ export function packToolDefs(fn, { lean = false } = {}) {
         fn(
           row.name,
           lean ? `${pack.title}: ${row.description}` : `${pack.title} pack: ${row.description}`,
-          lean && pack.id !== "analysis" ? leanProps(row.properties) : row.properties,
+          lean && !['analysis', 'wireshark'].includes(pack.id) ? leanProps(row.properties) : row.properties,
           row.required,
         ),
       ),
@@ -315,6 +318,7 @@ async function needDocker() {
 }
 
 export async function runPack(name, args, ctx = {}) {
+  if (String(name).startsWith('network_')) return runNetwork(name, args || {}, ctx);
   if (String(name).startsWith("analysis_")) return runAnalysis(name, args || {}, ctx);
   if (String(name).startsWith("ghidra_")) return runGhidra(name, args || {});
   if (process.platform === "win32") {
