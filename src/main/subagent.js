@@ -4,7 +4,11 @@ import { FACT_LAW } from "./ground.js";
 import { compactResult, executeTool, toolDefs } from "./tools.js";
 import { packFor } from "./packs.js";
 
+import { analysisPack, ANALYSIS_DOCTRINE } from "./analysis-pack.js";
+import { ghidraPack, ghidraReady } from "./ghidra-mcp.js";
+
 const PACKS = {
+  analysis: analysisPack().tools.map(row => row.name),
   host: ["host_facts", "host_disk", "host_processes", "host_listen_ports", "host_run", "host_file_read", "host_file_write"],
   net: ["net_report", "http_check", "dns_lookup", "tls_inspect"],
   docker: ["docker_ps", "docker_logs"],
@@ -16,6 +20,8 @@ const PACKS = {
 };
 
 const FIRST_TOOL = {
+  analysis: "analysis_status",
+  ghidra: "ghidra_status",
   host: "host_facts",
   net: "net_report",
   docker: "docker_ps",
@@ -27,16 +33,20 @@ const FIRST_TOOL = {
 };
 
 export function subagentPacks() {
-  return Object.keys(PACKS);
+  return ghidraReady() ? [...Object.keys(PACKS), "ghidra"] : Object.keys(PACKS);
 }
 
 export function toolsForPack(pack, cfg = {}) {
-  const keep = new Set(PACKS[pack] || []);
+  const names = pack === "ghidra" && ghidraReady()
+    ? ghidraPack().tools.map((row) => row.name)
+    : (PACKS[pack] || []);
+  const keep = new Set(names);
   return toolDefs({ local: false, search: Boolean(cfg.hnlSearch) }).filter((row) => keep.has(row.function?.name));
 }
 
 function packId(raw) {
   const id = String(raw || "").trim().toLowerCase();
+  if (id === "ghidra" && ghidraReady()) return id;
   return PACKS[id] ? id : "";
 }
 
@@ -74,6 +84,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
       content: [
         `Nova Collar ${pack} sub-agent. Tools only from this pack.`,
         shellHint,
+        pack === "analysis" ? ANALYSIS_DOCTRINE : "",
         `First action: call ${first}. Then only extra tools if the result is not enough.`,
         `After tools, 3 short factual lines. No preamble. ${FACT_LAW}`,
       ].join(" "),
@@ -82,9 +93,9 @@ export async function runSubagent(args, cfg, ctx = {}) {
   ];
 
   const local = isLocalModel(cfg.model);
-  const extra = { tools, predict: 420, ctx: 8192, temperature: 0.2 };
+  const extra = { tools, predict: pack === "analysis" ? 1200 : 420, ctx: pack === "analysis" ? 16384 : 8192, temperature: 0.2 };
 
-  for (let round = 0; round < 3; round += 1) {
+  for (let round = 0; round < (pack === "analysis" ? 10 : 3); round += 1) {
     const reply = await complete(messages, cfg, null, signal, {
       ...extra,
       toolChoice: round === 0 ? "required" : "auto",
@@ -99,7 +110,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
     messages.push({ role: "assistant", content: reply.content || "", tool_calls: reply.tool_calls });
     for (const call of reply.tool_calls) {
       const name = call.function.name;
-      if (name === "subagent" || !PACKS[pack].includes(name)) {
+      if (name === "subagent" || !tools.some(t => t.function?.name === name)) {
         notes.push(`skipped ${name}`);
         continue;
       }
@@ -108,6 +119,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
         ...ctx,
         depth: 1,
         signal,
+        emit,
         bot: ctx.bot || null,
         role: ctx.role || "",
         remote: Boolean(ctx.remote),
@@ -127,7 +139,7 @@ export async function runSubagent(args, cfg, ctx = {}) {
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        content: compactResult(result, { max: local ? 1800 : 2500 }),
+        content: compactResult(result, { max: pack === "analysis" ? 24_000 : (local ? 1800 : 2500) }),
       });
     }
   }

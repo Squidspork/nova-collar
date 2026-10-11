@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pup", {
   state: () => ipcRenderer.invoke("state"),
+  pickAnalysisTarget: () => ipcRenderer.invoke("analysis:pick"),
+  analysisLicenses: () => ipcRenderer.invoke("analysis:licenses"),
   resolveApproval: (id, allowed) => ipcRenderer.invoke("approval:resolve", { id, allowed }),
   saveKeys: (keys) => ipcRenderer.invoke("keys", keys),
   pin: (on) => ipcRenderer.invoke("pin", on),

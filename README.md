@@ -6,18 +6,18 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
-**Current source release: 0.2.7.** This release includes model discovery, conversation handling, and Omarchy terminal fixes. The earlier Windows installer remains available; see its version-specific release notes.
+**Current source release: [0.3.0](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.0).** Adds bundled REA and headless Ghidra for software analysis while preserving the existing Ghidra desktop-project route and the model, conversation, and Omarchy terminal fixes. This release publishes buildable source, dependency pins, license notices, and verification records. The earlier Windows installer remains available; it does not include the new analysis bundle.
 
 **The Mac app.** The old v0.2.0 downloads were withdrawn because native dependencies contained local build-directory metadata. A replacement public installer requires fresh signing and notarization. For now, build from source on an Apple Silicon Mac running macOS 12 or newer. Windows x64 builds remain available; see below.
 
 To build it yourself from the checkout:
 
 ```bash
-npm install
+npm ci
 npm run pack
 ```
 
-The app lands at `dist/mac-arm64/Nova Collar.app`. Drag it to `/Applications` and open it.
+The app lands at `dist/mac-arm64/Nova Collar.app`. Packaging downloads and verifies the pinned analysis engines and builds the Mac native helpers, so the first build needs network access and Xcode Command Line Tools. The complete app is about 1.9 GB. Drag it to `/Applications` and open it. This development build is not a notarized public installer.
 
 **From source, with the CLI.** macOS and Linux:
 
@@ -36,7 +36,7 @@ npm ci
 npm run release:win
 ```
 
-Run `dist/Nova-Collar-0.2.7-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for the x64 package.
+The output is `dist/Nova-Collar-0.3.0-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for that dependency. The 0.3.0 analysis bundle has been engine-tested only on Apple Silicon; Windows headless analysis is experimental upstream and the Windows package has not been validated for this release.
 
 For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 
@@ -104,6 +104,33 @@ nova-collar update laya
 
 That downloads the checkpoint (about 1 GB) into a writable spot the app can reach, and sets up a small Python environment for it — PyTorch and a few companions from PyPI, a few hundred MB more on first run. After that the window finds the model on its own; point `NP_LAYA_MODEL` at a checkpoint if you keep one elsewhere. Nothing about Laya reaches out to the network.
 
+### Software analysis, built in
+
+Nova Collar includes REA, headless Ghidra, and the Node and Java runtimes they
+need. Choose **Software analysis** in Work, or choose an app or file in Settings.
+Ask what a program does, trace a feature, or compare two builds. JavaScript and
+Electron inspection works without launching the target. Native queries start
+headless Ghidra automatically. The app owns the helper processes; users do not
+start a server or configure MCP.
+
+Each investigation has an explicit target and session. Results and evidence are
+saved in `~/.novapup/analysis`. Finished investigations close their helpers;
+idle sessions close after ten minutes, and quitting Collar saves and closes
+active sessions. Cancel stops the current request. Results distinguish evidence
+from inference, and large responses can be read in pages. A selected remote
+model receives tool findings just as it receives other chat context.
+
+The **Ghidra projects** pack remains available for an existing desktop project.
+It connects to the local Ghidra window at `127.0.0.1:8089` and preserves that
+project workflow. Normal software investigations use the internal headless route.
+
+Source builds run `npm run analysis:prepare` once. Packaging prepares and verifies
+the pinned bundle automatically. macOS native decompiler builds need Xcode Command
+Line Tools on the build machine; installed apps do not. See
+[analysis packaging and verification](docs/software-analysis.md). Extra REA
+providers such as Android/JADX and firmware extractors retain their own optional
+requirements; bundling REA and Ghidra does not install every third-party engine.
+
 ### The terminal is a two-way door
 
 The window has a live terminal. The agent can type into it and read it, so it can run a command where you can watch, and the chat shows what it typed. You can also talk back to the agent from that same terminal: `np "what you want"` runs a turn on the same chats as the window. When the agent changes its working directory, the terminal follows. It is meant for frictionless system work — you and the agent at one prompt.
@@ -137,6 +164,8 @@ The window stands on other people's work, and the duty their licenses ask is sma
 - **Apache-2.0.** Laya starts from `convaiinnovations/laya`, which builds on Answer.AI's ModernBERT-large. Thank you to Convai Innovations and to Answer.AI. Our checkpoint is a modified copy; their license, a note that the weights changed, and their attribution travel with it.
 - **Optional, from PyPI.** If you add Laya, its Python environment pulls PyTorch, transformers, safetensors, huggingface_hub, and numpy under their own licenses. None of these ship inside the window.
 - **Ollama (MIT).** If setup installs it for a local model. Nova Collar does not ship Ollama inside the window.
+- **REA (MIT).** [morluto/rea](https://github.com/morluto/rea) supplies the software-analysis MCP engine. Its original copyright and permission notice remain intact in the bundle and [REA license](runtime/analysis/licenses/REA-MIT.txt).
+- **Ghidra (Apache-2.0 and component licenses).** [NationalSecurityAgency/ghidra](https://github.com/NationalSecurityAgency/ghidra) supplies native analysis. Its original source, notices, and GPL demangler source remain in the bundle. Node, Temurin, and the MCP SDK retain their own licenses; see [analysis provenance](docs/software-analysis.md#licenses-and-provenance).
 
 ## About Hungry Nova Labs
 

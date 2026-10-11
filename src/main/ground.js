@@ -1,6 +1,7 @@
 export const FACT_LAW = "Facts: if you did not read it this turn (search, docs, or a file), do not state it. Say you don't know. No invented names, dates, prices, APIs, or news. Names, years, and prices must appear in what you read.";
 
 const LOOKUP = new Set([
+  "analysis_call", "analysis_run", "analysis_open", "analysis_read_result",
   "web_search",
   "extract",
   "scrape",
@@ -75,6 +76,7 @@ export function missingClaims(answer, evidence) {
 
 function evidenceOf(result) {
   if (!result || typeof result !== "object") return "";
+  if (result.result_id) return JSON.stringify(result.data || result.preview || result.text || result.details || {});
   const hits = result.hits || result.data?.results || result.data?.hits || [];
   const hitText = hits.map((hit) => [hit.text, hit.content, hit.title, hit.url, hit.snippet].filter(Boolean).join(" ")).join("\n");
   return [result.content, result.text, result.stdout, result.summary, result.blurb, hitText].filter(Boolean).join("\n");

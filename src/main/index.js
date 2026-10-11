@@ -1,3 +1,4 @@
+import { analysisBundle, analysisManager } from "./analysis-runtime.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -179,6 +180,7 @@ function snapshot() {
   return {
     ...publicState(cfg),
     approvals: pendingApprovals(),
+    analysis: analysisManager.status(),
     localModels: localServers.flatMap((server) => server.models.map((model) => ({ url: server.url, model }))),
     npReady: existsSync(join(homedir(), ".local", "bin", "np")),
     packs: [
@@ -394,15 +396,34 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on("before-quit", () => {
+let analysisQuitReady = false;
+app.on("before-quit", event => {
   cancelApprovals();
   stopBoard();
   stopLaya();
+  turnAbort?.abort();
+  if (!analysisQuitReady && analysisManager.sessions.size) {
+    event.preventDefault();
+    analysisManager.closeAll().finally(() => { analysisQuitReady = true; app.quit(); });
+  }
 });
 app.on("window-all-closed", () => app.quit());
 
 ipcMain.handle("state", (event) => (fromWindow(event) ? snapshot() : {}));
 ipcMain.handle("approval:resolve", (event, body) => fromWindow(event) && resolveApproval(body?.id, body?.allowed === true));
+
+ipcMain.handle("analysis:pick", async event => {
+  if (!fromWindow(event)) return { ok: false };
+  const picked = await dialog.showOpenDialog(win, { title: "Choose software to inspect", properties: ["openFile", "openDirectory"] });
+  return picked.canceled ? { ok: false, cancelled: true } : { ok: true, path: picked.filePaths[0] };
+});
+ipcMain.handle("analysis:licenses", async event => {
+  if (!fromWindow(event)) return { ok: false };
+  const bundle = analysisBundle();
+  if (!bundle.ok) return bundle;
+  const error = await shell.openPath(join(bundle.root, "THIRD-PARTY-NOTICES.txt"));
+  return { ok: !error, error };
+});
 
 ipcMain.handle("setup:scan", async (event) => {
   if (!fromWindow(event)) return { found: [] };

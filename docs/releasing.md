@@ -1,6 +1,30 @@
 # Building a release
 
-Use Node.js 22.12+ and a clean checkout. Run `npm ci` and `npm test` before packaging. Update both package versions and the changelog. Build both platforms from the same commit; never include a developer’s `.novapup` folder or credentials.
+Use Node.js 22.12+ and a clean checkout. Run `npm ci`, `npm test`, `node --test scripts/ghidra-review.test.mjs`, and `npm run test:app` before packaging. Update both package versions and the changelog. Build each platform from the same commit; never include a developer’s `.novapup` folder or credentials.
+
+## Source releases
+
+Version 0.3.0 is a source release. Keep the upstream copyright and license text,
+`NOTICE`, analysis dependency locks, and build recipe in the public checkout.
+Generate an attached source ZIP from the tagged commit with `git archive`, not
+from the developer's working directory. This excludes ignored downloads, local
+settings, investigation results, logs, and signing material. Scan both outgoing
+commits and the extracted final ZIP for secrets and private identifiers.
+
+Attach SHA-256 checksums and a reviewed verification summary identifying the
+source commit, test scope, and tested engine platforms. Verify the uploaded
+asset digests against local hashes. Hashes establish byte integrity, not an
+independent security audit or reproducible compilation. Do not publish updater
+manifests without their matching verified installers.
+
+## Analysis bundle
+
+Packaging invokes `scripts/prepare-analysis.mjs`, verifies the pinned downloads,
+and retains licenses and source. See [software-analysis provenance](software-analysis.md#licenses-and-provenance).
+Run `npm run test:analysis:live` against each intended platform's complete bundle
+before claiming support. Check the packaged app as well as the development tree.
+The 0.3.0 engine was verified on Apple Silicon; Windows, Linux, and Intel Mac
+archive entries are build specifications, not validated release artifacts.
 
 ## Windows x64
 

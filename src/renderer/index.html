@@ -109,6 +109,10 @@
           <strong>settings</strong>
           <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
         </div>
+        <p class="sheet-sub">software analysis</p>
+        <p class="sheet-note" id="analysis-ready">Bundled REA and headless Ghidra.</p>
+        <div class="packs"><button type="button" id="analysis-pick">choose an app or file</button><button type="button" id="analysis-licenses">licenses</button></div>
+        <p class="sheet-note">Software analysis runs inside Collar. Use the Ghidra projects pack for an existing desktop project.</p>
         <p class="sheet-sub">personality</p>
         <p class="sheet-note" id="voice-now">How I talk.</p>
         <form class="dossier" id="voice-form">
@@ -350,6 +354,9 @@
           <h2>Apache 2.0</h2>
           <p>Laya, the small decision model, starts from convaiinnovations/laya on Hugging Face. That model card is Apache 2.0. Thank you to Convai Innovations for releasing it.</p>
           <p>The checkpoint in models/laya-np is a modified copy. We trained it on Nova Collar’s job, loop, goal, and audit questions. Apache 2.0 asks us to keep their license, say that the weights were changed, and retain their attribution notices. There is no warranty, and their trademarks are still theirs.</p>
+          <h2>REA and Ghidra</h2>
+          <p>Software analysis includes REA by morluto under MIT and Ghidra under Apache 2.0. Their original licenses, notices, and component attributions travel with the app. Hungry Nova Labs builds the integration and the Mac decompiler from unmodified Ghidra source.</p>
+          <p>The bundled Node runtime retains its MIT and third-party notices. Eclipse Temurin uses GPLv2 with the Classpath Exception; its notices and complete corresponding source are included with the analysis bundle. Open software analysis licenses in settings for their locations.</p>
           <h2>Ollama</h2>
           <p>If setup installs Ollama, that project is MIT as well. Same duty: keep its copyright and permission notice with the copy. Nova Collar does not ship Ollama inside the window.</p>
           <p class="credits-end">Own your data. Own your future.</p>

@@ -31,7 +31,7 @@ function fn(name, description, properties = {}, required = []) {
 export function toolDefs({ local = false, search = false } = {}) {
   const defs = [
     ...packToolDefs(fn, { lean: local }),
-    fn("subagent", "Cursor-style specialist sub-agent. Multi-step pack work. pack: host, net, docker, incident, hnl, computer, desk, term.", { task: { type: "string" }, pack: { type: "string" } }, ["task", "pack"]),
+    fn("subagent", "Cursor-style specialist sub-agent. Multi-step pack work. pack: host, net, docker, incident, hnl, computer, desk, term, analysis, ghidra.", { task: { type: "string" }, pack: { type: "string" } }, ["task", "pack"]),
     fn("pack_task", "Give the Pack a task so Nova Collar can keep working. title is the job. goal is what done looks like. bot is an existing member name, or omit it and a member is made. every is 0 (once), 1, or 3 minutes.", {
       title: { type: "string" },
       goal: { type: "string" },
@@ -304,7 +304,7 @@ async function runTool(name, rawArgs, cfg, ctx = {}) {
   if (name === "set_personality") return writeMemory("personality", args.content);
   if (name === "generate_image") return generateImage(args, cfg);
   if (isPackTool(name)) {
-    const packed = await runPack(name, args);
+    const packed = await runPack(name, args, ctx);
     if (packed) return packed;
   }
   if (isDeskTool(name)) return runDesk(name, args);

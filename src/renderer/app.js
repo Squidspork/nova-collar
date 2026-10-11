@@ -224,7 +224,22 @@ function paintSense(doc) {
   }
 }
 
+document.getElementById("analysis-pick")?.addEventListener("click", async () => {
+  const picked = await window.pup.pickAnalysisTarget();
+  if (!picked.ok) return;
+  document.getElementById("settings").hidden = true;
+  if (selectedPack !== "analysis") setPack("analysis");
+  input.value = `Inspect the software at ${JSON.stringify(picked.path)} and explain its structure and main capabilities.`;
+  growInput();
+  input.focus();
+});
+document.getElementById("analysis-licenses")?.addEventListener("click", () => window.pup.analysisLicenses());
+
 function renderPacks(state) {
+  const ready = document.getElementById("analysis-ready");
+  if (ready) ready.textContent = state.analysis?.ok
+    ? `Ready · REA ${state.analysis.versions.rea} · Ghidra ${state.analysis.versions.ghidra}`
+    : (state.analysis?.error || "Software analysis bundle unavailable.");
   lastPacks = state.packs || lastPacks;
   packsMachines?.replaceChildren();
   packsWork?.replaceChildren();

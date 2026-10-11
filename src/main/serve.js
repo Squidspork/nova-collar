@@ -1,3 +1,4 @@
+import { analysisAsk, workingProjectAsk } from "./analysis-pack.js";
 import { factAsk, folderAsk } from "./ground.js";
 
 /** Gate before a tool runs. A specific question only gets the tool that answers it. */
@@ -71,6 +72,8 @@ export function servesAsk(ask, name, history) {
   const tool = String(name || "");
   const q = String(ask || "");
   if (!tool) return false;
+  if (analysisAsk(q) && tool.startsWith("analysis_")) return true;
+  if (workingProjectAsk(q) && tool.startsWith("ghidra_")) return true;
   if (tool === "say_plain") return plainTurn(q, history);
   if (plainTurn(q, history)) return tool === "say_plain";
   if (tunnelTurn(q)) return tool === "host_tunnels";
@@ -93,6 +96,9 @@ export function toolsForAsk(tools, ask, history, packNames = null) {
   if (plainTurn(ask, history)) {
     const plain = tools.filter((row) => toolName(row) === "say_plain");
     return plain.length ? plain : tools;
+  }
+  if (packNames?.has("analysis_open") || packNames?.has("ghidra_programs")) {
+    return tools.filter(row => packNames.has(toolName(row)));
   }
   const kept = tools.filter((row) => servesAsk(ask, toolName(row), history));
   if (wantedTools(ask, history).length) return kept.length ? kept : tools;

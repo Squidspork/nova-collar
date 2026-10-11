@@ -22,6 +22,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
       - run: npm test
+      - run: node --test scripts/ghidra-review.test.mjs
       - if: runner.os != 'Linux'
         run: npm run test:app
       - if: runner.os == 'Linux'

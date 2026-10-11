@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — Bundled REA and Ghidra analysis
+
+- Add REA 6.4.0 and Ghidra 12.1.4 with pinned Node and Temurin runtimes. The app starts its own stdio MCP helper and headless Ghidra as needed; users do not manage a separate server.
+- Add software-analysis tools for native programs, JavaScript, Electron/ASAR, comparisons, and saved evidence. Tool schemas are discovered from REA. Explicit execution and write operations use Collar's approval flow.
+- Preserve the Ghidra projects pack for an existing desktop project with its compatible local bridge. Each headless investigation has a separate target and workspace, cancellation, retained reports, and automatic helper cleanup.
+- Add Settings file selection and license access. Keep upstream licenses, copyright notices, dependency pins, native source, and complete Temurin source in generated bundles. The Mac decompiler and both GNU demanglers are built from unmodified upstream source.
+- Preserve the 0.2.7 model discovery, conversation history, approvals, and terminal fixes.
+
+Validation: 18 application suites, 8 Ghidra function-review tests, and Electron window/native-terminal checks passed locally. Twelve checks against the actual Apple Silicon app cover real REA/Ghidra analysis, GNU demanglers, cancellation, unchanged targets, and helper cleanup. See the release verification asset for exact provenance and CI results. Engine validation covers Apple Silicon only; archive specifications for other platforms are not evidence of tested packages.
+
+This is a source release. No 0.3.0 installers or updater manifests are published. A public Mac installer still requires fresh signing, privacy inspection, and Apple notarization. Optional Android, firmware, browser, and commercial REA providers are not all included. A selected remote chat model receives analysis findings as normal tool context.
+
 ## 0.2.7 — Omarchy terminal output
 
 - Preserve command output between shell control sequences on Omarchy and other terminals that use ST-terminated OSC records. The model's terminal reader now strips control codes without discarding the command's result.
