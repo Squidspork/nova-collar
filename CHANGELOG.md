@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 — Notarized Apple Silicon distribution
+
+- Publish a signed, notarized Mac installer and ZIP containing the current REA/Ghidra analysis bundle. Retain upstream source, licenses, and notices.
+- Strip native debug records before signing and reject native binaries that still contain the build user’s home path.
+- Require notarization credentials and a Developer ID identity for public Mac builds. Development packaging remains available separately.
+- Rebuild update blockmaps, sizes, and checksums after the DMG is stapled, so the updater verifies the final downloaded bytes. Add a regression test for this order.
+
+This release provides Apple Silicon Mac binaries and source. Windows and Linux application CI remains covered; their analysis engine packages are not newly validated or published.
+
 ## 0.3.0 — Bundled REA and Ghidra analysis
 
 - Add REA 6.4.0 and Ghidra 12.1.4 with pinned Node and Temurin runtimes. The app starts its own stdio MCP helper and headless Ghidra as needed; users do not manage a separate server.
