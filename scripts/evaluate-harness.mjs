@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-const suites = ["conversation", "hnl-turn", "helper-context", "verification", "projects", "checkpoints", "subagent", "context", "context-info", "cli-control", "project-knowledge", "streaming", "processes"];
+const suites = ["conversation", "hnl-turn", "helper-context", "verification", "projects", "checkpoints", "subagent", "context", "context-info", "request-budget", "tool-catalog", "cli-control", "project-knowledge", "streaming", "processes"];
 const home = mkdtempSync(join(tmpdir(), "collar-evaluation-"));
 const git = args => {
   const result = spawnSync("git", args, { encoding: "utf8" });

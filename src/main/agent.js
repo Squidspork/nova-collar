@@ -1,6 +1,8 @@
 import { ASK_USER_TOOL, HNL_METHODOLOGY } from "./methodology.js";
 import { budgetContext, CONTEXT_INFO_TOOL, contextSnapshot, contextView, lastContextSnapshot, saveContextSnapshot } from "./context.js";
 import { instructionContext } from "./instruction-context.js";
+import { requestBudget } from "./request-budget.js";
+import { createToolCatalog } from "./tool-catalog.js";
 import { activeWatched } from "./guard.js";
 import { ANALYSIS_DOCTRINE, steerAnalysis } from "./analysis-pack.js";
 import { NETWORK_DOCTRINE, steerNetwork } from './network-pack.js';
@@ -187,7 +189,7 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
   aborted(signal);
   const target = extra.target || chatTarget(cfg);
   const metadata = modelMetadata(cfg, target);
-  const lean = target.local || smallModel(target.model);
+  const { lean, contextTokens, outputTokens: predict } = requestBudget(cfg, target, extra);
   const body = {
     model: target.model,
     messages,
@@ -195,9 +197,6 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
     tool_choice: extra.toolChoice || "auto",
     stream: true,
   };
-  const requestedTokens = extra.predict || (lean ? 1536 : metadata?.output ? 8192 : 0);
-  const contextTokens = metadata?.context || extra.ctx || (lean ? 12288 : 32768);
-  const predict = Math.min(requestedTokens || 8192, metadata?.output || Infinity, Math.max(256, Math.floor(contextTokens / 4)));
   if (metadata?.tools === false || !body.tools.length) {
     delete body.tools;
     delete body.tool_choice;
@@ -213,7 +212,7 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
     body.think = false;
     body.options = {
       temperature,
-      num_ctx: extra.ctx || 12288,
+      num_ctx: contextTokens,
       num_predict: predict,
     };
   }
@@ -401,8 +400,7 @@ function requestContextSections(messages, instructionSections = [], cwd = getWor
 /** Local inspection deliberately skips model routing, memory retrieval, and tools. */
 export function previewContextInfo(history = [], { sessionId = "", role = "", assembledMessages, tools, sections } = {}) {
   const cfg = loadConfig(), target = chatTarget(cfg), metadata = modelMetadata(cfg, target);
-  const local = target.local || smallModel(target.model), contextTokens = metadata?.context || (local ? 12288 : 32768);
-  const outputTokens = Math.min(metadata?.output || (local ? 1536 : 8192), Math.max(256, Math.floor(contextTokens / 4)));
+  const { lean: local, contextTokens, outputTokens } = requestBudget(cfg, target);
   let messages = assembledMessages;
   if (!messages) {
     const memory = readMemory(), instructions = instructionContext(getWorkdir());
@@ -412,10 +410,16 @@ export function previewContextInfo(history = [], { sessionId = "", role = "", as
     sections = requestContextSections(messages, instructions.sections);
     sections.push({ name: "Deferred retrieval", chars: 0, representation: "memory search and project selection not run for inspection", sources: [join(APP_HOME, "project-memory"), join(APP_HOME, "project-map.json")] });
   }
-  if (!tools) tools = [...windowToolDefs({ local, search: Boolean(cfg.hnlSearch), remote: false }),
-    ...skillToolDefinitions.map(definition => ({ type: "function", function: definition })),
-    ...projectMemoryToolDefinitions.map(definition => ({ type: "function", function: definition })),
-    ...projectMapToolDefinitions.map(definition => ({ type: "function", function: definition })), CONTEXT_INFO_TOOL, ASK_USER_TOOL];
+  sections ||= [];
+  if (!tools) {
+    const catalog = [...windowToolDefs({ local, search: Boolean(cfg.hnlSearch), remote: false }),
+      ...skillToolDefinitions.map(definition => ({ type: "function", function: definition })),
+      ...projectMemoryToolDefinitions.map(definition => ({ type: "function", function: definition })),
+      ...projectMapToolDefinitions.map(definition => ({ type: "function", function: definition })), CONTEXT_INFO_TOOL, ASK_USER_TOOL];
+    const disclosure = createToolCatalog(catalog, { contextTokens, ask: [...history].reverse().find(row => row.role === "user")?.content });
+    tools = disclosure.offered();
+    sections.push(disclosure.section());
+  }
   if (metadata?.tools === false) tools = [];
   const budget = budgetContext(messages, { contextTokens, outputTokens, tools, sessionId, persist: false, allowOverflow: true });
   return contextSnapshot({ model: target.model, messages: budget.messages, tools, sections: sections || [], contextTokens,
@@ -543,7 +547,18 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const contextTools = contextAvailable ? [CONTEXT_INFO_TOOL] : [];
   const additionalTools = [...contextTools, ...(interactive ? [ASK_USER_TOOL] : [])];
   const baseOffered = disclosed || catalog;
-  const offered = Array.isArray(baseOffered) ? [...baseOffered, ...additionalTools] : additionalTools.length ? additionalTools : baseOffered;
+  // Task relevance guides initial disclosure; it is separate from role/tool authority.
+  const permitted = Array.isArray(catalog) ? [...catalog, ...additionalTools] : null;
+  const disclosure = permitted && contextAvailable ? createToolCatalog(permitted, {
+    ask: userText, preferred: baseOffered || [],
+    contextTokens: Math.min(...targets.map(target => requestBudget(cfg, target).contextTokens)),
+  }) : null;
+  let offered = disclosure?.progressive ? disclosure.offered()
+    : Array.isArray(baseOffered) ? [...baseOffered, ...additionalTools] : additionalTools.length ? additionalTools : baseOffered;
+  const permittedNames = permitted && new Set(permitted.map(tool => realToolName(tool.function?.name || tool.name)));
+  if (disclosure?.progressive) permittedNames.add("discover_tools");
+  const disclosureSection = disclosure?.section();
+  if (disclosureSection) contextSections.push(disclosureSection);
   const callExtra = steer?.toolChoice
     ? { tools: [], toolChoice: steer.toolChoice }
     : (offered ? { tools: offered } : {});
@@ -758,6 +773,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     if (path === "hash") hashes += 1;
     emit({ type: "mood", mood: "think", text: path === "plan" ? "planning" : path === "hash" ? "hashing" : "thinking" });
     onDelta.writing = false;
+    const requestOffered = callExtra.tools || offered;
     const reply = await onLane(path, messages, onDelta, {
       ...(repairName
         ? { ...callExtra, toolChoice: { type: "function", function: { name: repairName } } }
@@ -989,6 +1005,15 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       }
       aborted(signal);
       const name = realToolName(call.function.name);
+      const disclosedNames = new Set((requestOffered || []).map(tool => realToolName(tool.function?.name || tool.name)));
+      if (permittedNames && (!permittedNames.has(name) || (disclosure?.progressive && !disclosedNames.has(name)))) {
+        const detail = "Tool is not currently disclosed within this turn's permitted catalog. Use discover_tools for permitted schemas; no action ran.";
+        emit({ type: "tool", name, args: "" });
+        emit({ type: "tool_result", name, ok: false, blurb: "Unavailable", detail });
+        messages.push({ role: "tool", tool_call_id: call.id, content: detail });
+        progress();
+        continue;
+      }
       const args = briefArgs(call.function.arguments);
       const sig = toolSig(name, args);
       const count = (seen.get(sig) || 0) + 1;
@@ -1013,7 +1038,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         changed,
         trustLaya: layaLoopTrained(),
       });
-      if (!knowledgeNames.has(name) && !(pack === 'wireshark' && packNames?.has(name)) && !servesAsk(userText, name, history)) {
+      if (name !== "discover_tools" && !knowledgeNames.has(name) && !(pack === 'wireshark' && packNames?.has(name)) && !servesAsk(userText, name, history)) {
         messages.push({
           role: "tool",
           tool_call_id: call.id,
@@ -1116,7 +1141,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         }
         continue;
       }
-      const gap = unfinishedArgs(call.function.arguments, requiredFields(offered, name));
+      const gap = unfinishedArgs(call.function.arguments, requiredFields(requestOffered, name));
       if (gap && repairs < 2) {
         repairs += 1;
         if (!repairName) repairName = name;
@@ -1146,6 +1171,19 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       const blocked = gate.before(name, callArgs);
       const result = blocked
         ? { ok: false, error: blocked.detail || blocked.blurb, path: blocked.path }
+        : name === "discover_tools"
+          ? (() => {
+            if (!disclosure?.progressive) return { ok: false, error: "Tool discovery is unavailable on this surface." };
+            let args;
+            try { args = JSON.parse(callArgs || "{}"); } catch { return { ok: false, error: "Discovery arguments must be JSON." }; }
+            const result = disclosure.inspect(args);
+            if (result.ok) {
+              offered = disclosure.offered();
+              callExtra.tools = offered;
+              Object.assign(disclosureSection, disclosure.section());
+            }
+            return result;
+          })()
         : name === "context_info"
           ? (() => {
             if (!contextAvailable) return { ok: false, error: "Context inspection is available to the lead only." };

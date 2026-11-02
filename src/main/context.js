@@ -103,6 +103,7 @@ export function contextView(args = {}) {
 
 function toolSource(name) {
   if (name === "context_info") return "bundled context metadata";
+  if (name === "discover_tools") return "bundled permitted tool catalog";
   if (["list_skills", "read_skill"].includes(name)) return "bundled skill registry";
   if (name.startsWith("project_memory_")) return "local project memory";
   if (name.startsWith("project_map_") || ["project_map", "project_lookup"].includes(name)) return "local project registry";

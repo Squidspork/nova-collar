@@ -73,6 +73,13 @@ full instructions only when needed. Retrieve a bounded set of relevant memory
 and source records; avoid drive-wide crawling or placing every tool manual in
 every request.
 
+When the permitted catalog would exceed 30% of the effective context window,
+offer task-relevant schemas and `discover_tools`. Discovery searches bounded
+metadata or selects up to six exact permitted names; full schemas then appear
+on the next request. Discovery executes no operation. Hidden or out-of-catalog
+calls cannot execute, and helpers inherit the separate permission catalog.
+Local request metadata uses the same effective window sent as `num_ctx`.
+
 Compaction should retain the user's goal, constraints, decisions, verified
 progress, pending obligations and next action. Preserve complete tool call and
 result pairs. Reserve the active model's output budget before its context fills.
