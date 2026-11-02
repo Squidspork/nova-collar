@@ -58,31 +58,33 @@ function saveSummary(sessionId, entries) {
 
 /** Keep complete user/tool groups and reserve output before sending a request.
  * Large current tool results are never sliced into invalid JSON. They require
- * a narrower tool query or a larger configured context instead.
+ * a narrower tool query or a larger configured context instead. Overflow may
+ * only be returned for local inspection; it never persists continuity.
  */
-export function budgetContext(messages, { contextTokens = 32768, outputTokens = 1536, tools = [], sessionId = "", persist = true } = {}) {
+export function budgetContext(messages, { contextTokens = 32768, outputTokens = 1536, tools = [], sessionId = "", persist = true, allowOverflow = false } = {}) {
   const system = messages.filter(row => row.role === "system");
   const groups = [];
   for (const row of messages.filter(row => row.role !== "system")) {
     if (row.role === "user" || !groups.length) groups.push([]);
     groups.at(-1).push(row);
   }
-  const inputBudget = Math.max(256, contextTokens - outputTokens - 512 - estimatedTokens(tools));
-  const fixed = estimatedTokens(system);
+  const schemaTokens = tools.length ? estimatedTokens(tools) : 0;
+  const inputBudget = contextTokens - outputTokens - 512 - schemaTokens;
   const dropped = [];
   let entries = readContextSummary(sessionId);
   const summaryRow = () => entries.length ? [{ role: "user", content: SUMMARY + JSON.stringify(entries.map(({ source, text }) => ({ source, text }))) }] : [];
-  const cost = () => fixed + estimatedTokens(summaryRow()) + estimatedTokens(groups.flat());
+  const cost = () => estimatedTokens([...system, ...summaryRow(), ...groups.flat()]);
   while (groups.length > 1 && cost() > inputBudget) {
     const old = groups.shift(); dropped.push(...old); entries = mergeSummary(entries, old);
   }
   // The summary is context, never a reason to truncate the current request.
   while (entries.length && cost() > inputBudget) entries.shift();
-  if (cost() > inputBudget) throw new Error("The current request, tool evidence and tool catalog exceed the model context after reserving its reply. Use a narrower tool query or a larger context; no action was replayed.");
-  if (persist && dropped.length) saveSummary(sessionId, mergeSummary(readContextSummary(sessionId), dropped));
+  const overBudget = cost() > inputBudget;
+  if (overBudget && !allowOverflow) throw new Error("The current request, tool evidence and tool catalog exceed the model context after reserving its reply. Use a narrower tool query or a larger context; no action was replayed.");
+  if (persist && !overBudget && dropped.length) saveSummary(sessionId, mergeSummary(readContextSummary(sessionId), dropped));
   return { messages: [...system, ...summaryRow(), ...groups.flat()], compacted: dropped.length,
-    estimatedInputTokens: cost() + estimatedTokens(tools), reservedOutputTokens: outputTokens,
-    rawMessages: messages.length, summaryEntries: entries.length };
+    estimatedInputTokens: cost() + schemaTokens, reservedOutputTokens: outputTokens,
+    rawMessages: messages.length, summaryEntries: entries.length, overBudget };
 }
 
 const INFO_KEYS = new Set(["version", "kind", "capturedAt", "model", "estimate", "tokens", "roles", "sections", "tools", "conversation", "compaction", "note"]);
@@ -125,7 +127,8 @@ export function contextSnapshot({ model = "", messages = [], tools = [], section
   return { version: 1, kind: kind === "request" ? "request" : "preview", capturedAt: new Date().toISOString(), model: metadataLabel(model, 200),
     estimate: "Conservative UTF-8 bytes / 2 including serialized framing; media reserves are approximate. Not provider billing or a tokenizer count.",
     tokens: { messages: messageTokens, schemas, input: messageTokens + schemas, reserve: outputTokens, safety: 512, window: contextTokens,
-      headroom: contextTokens - outputTokens - 512 - messageTokens - schemas },
+      headroom: contextTokens - outputTokens - 512 - messageTokens - schemas,
+      overBudget: messageTokens + schemas + outputTokens + 512 > contextTokens },
     roles,
     sections: sections.slice(0, 30).map(section => ({ name: metadataLabel(section.name, 100),
       chars: Math.max(0, Number(section.chars) || 0), tokens: Math.ceil(Math.max(0, Number(section.chars) || 0) / 2),
@@ -136,6 +139,7 @@ export function contextSnapshot({ model = "", messages = [], tools = [], section
     conversation: { rawMessages: Number(budget.rawMessages) || messages.length, sentMessages: messages.length, compactedMessages: Number(budget.compacted) || 0 },
     compaction: { enabled: true, activeSummary: summaryEntries > 0, summaryEntries, ...(sessionId ? { source: summaryFile(sessionId) } : {}) },
     note: metadataLabel(note || (kind === "request" ? "Saved metadata from the actual dispatched request after compaction. Later input is excluded. Next is a separate local preview."
+      : budget.overBudget ? "Fresh local preview is over budget after compaction. The assembled input, tool schemas and reserved reply exceed the model context; dispatch would be blocked. Narrow the tools or select a larger context. No provider request or memory search was run. Unsent drafts are excluded."
       : "Fresh local preview. No provider request or memory search was run. Unsent drafts are excluded; later routing, reads, and retrieval can change the request."), 1000) };
 }
 

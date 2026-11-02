@@ -100,6 +100,25 @@ test("actual post-compaction requests persist metadata, cap small-model output, 
   } finally { fs.readFileSync = originalRead; syncBuiltinESMExports(); }
 });
 
+test("oversized next previews report their costs without dispatching or replacing last metadata", async () => {
+  const messages = [{ role: "system", content: "Oversize fixture policy." }, { role: "user", content: "Inspect locally." }];
+  const tools = [CONTEXT_INFO_TOOL, { type: "function", function: { name: "oversized_fixture", description: "PRIVATE_SCHEMA_SENTINEL".repeat(100000), parameters: { type: "object" } } }];
+  const before = JSON.stringify(lastContextSnapshot("actual"));
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => { requests++; throw Error("NETWORK_FORBIDDEN"); };
+  try {
+    const preview = previewContextInfo([], { sessionId: "actual", assembledMessages: messages, tools });
+    assert.equal(preview.kind, "preview"); assert(preview.tokens.headroom < 0); assert.equal(preview.tokens.overBudget, true);
+    assert.match(preview.note, /over budget.*dispatch would be blocked/);
+    assert(preview.tools.entries.some(row => row.name === "context_info"));
+    assert(!JSON.stringify(preview).includes("PRIVATE_SCHEMA_SENTINEL"));
+    assert.equal(JSON.stringify(lastContextSnapshot("actual")), before);
+    await assert.rejects(complete(messages, loadConfig(), null, undefined, { sessionId: "actual", tools }), /exceed the model context/);
+    assert.equal(requests, 0); assert.equal(JSON.stringify(lastContextSnapshot("actual")), before);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("context commands inspect saved metadata locally without displaying prompt contents", () => {
   const session = bootSessions().session;
   const snapshot = contextSnapshot({ kind: "request", model: "context-fixture", messages: [{ role: "user", content: "PRIVATE_BODY_NEVER_IN_REPORT" }], tools: [CONTEXT_INFO_TOOL] });

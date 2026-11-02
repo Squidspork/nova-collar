@@ -417,7 +417,7 @@ export function previewContextInfo(history = [], { sessionId = "", role = "", as
     ...projectMemoryToolDefinitions.map(definition => ({ type: "function", function: definition })),
     ...projectMapToolDefinitions.map(definition => ({ type: "function", function: definition })), CONTEXT_INFO_TOOL, ASK_USER_TOOL];
   if (metadata?.tools === false) tools = [];
-  const budget = budgetContext(messages, { contextTokens, outputTokens, tools, sessionId, persist: false });
+  const budget = budgetContext(messages, { contextTokens, outputTokens, tools, sessionId, persist: false, allowOverflow: true });
   return contextSnapshot({ model: target.model, messages: budget.messages, tools, sections: sections || [], contextTokens,
     outputTokens, budget, kind: "preview", sessionId });
 }

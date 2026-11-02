@@ -22,4 +22,13 @@ test("compaction reserves reply tokens, keeps complete tool groups and persists 
 test("a single oversized tool result fails closed without truncating call JSON", () => {
   assert.throws(() => budgetContext([{ role: "user", content: "x".repeat(10000) }], { contextTokens: 1000, outputTokens: 400 }), /exceed/);
 });
+test("schemas and reply cannot consume the window even with a tiny message", () => {
+  const messages = [{ role: "user", content: "x" }];
+  const tools = [{ type: "function", function: { name: "read", description: "x".repeat(2000) } }];
+  assert.throws(() => budgetContext(messages, { contextTokens: 1000, outputTokens: 400, tools }), /exceed/);
+  const preview = budgetContext(messages, { contextTokens: 1000, outputTokens: 400, tools, allowOverflow: true, persist: false });
+  assert.equal(preview.overBudget, true);
+  assert(preview.estimatedInputTokens + preview.reservedOutputTokens + 512 > 1000);
+  assert.deepEqual(preview.messages, messages);
+});
 test.after(() => rmSync(home, { recursive: true, force: true }));

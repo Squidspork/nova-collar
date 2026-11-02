@@ -12,7 +12,7 @@
       const lines = [value.kind === "request" ? "Last dispatched request" : "Next request preview", `${value.model} · ${value.capturedAt}`,
         `Input ~${number(value.tokens.input)} tokens`, `Message tokens ~${number(value.tokens.messages)} · schema tokens ~${number(value.tokens.schemas)}`,
         `Window ${number(value.tokens.window)} · reply ${number(value.tokens.reserve)} · headroom ~${number(value.tokens.headroom)}`,
-        `Sent ${number(value.conversation.sentMessages)} messages · compacted ${number(value.conversation.compactedMessages)} · summary ${value.compaction.activeSummary ? "active" : "inactive"}`,
+        `${value.kind === "request" ? "Sent" : "Retained"} ${number(value.conversation.sentMessages)} messages · compacted ${number(value.conversation.compactedMessages)} · summary ${value.compaction.activeSummary ? "active" : "inactive"}`,
         `${value.tools.count} tool schemas, including inspection when offered`, ""];
       for (const section of value.sections) {
         lines.push(`${section.name} · ${section.representation} · ~${number(section.tokens)} tokens`);

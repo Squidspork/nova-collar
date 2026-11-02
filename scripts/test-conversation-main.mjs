@@ -146,7 +146,7 @@ try {
   await until(() => js('document.getElementById("context-report").textContent.includes("Next request preview")'), "settings context preview");
   const contextReport = await js('document.getElementById("context-report").textContent');
   assert.match(contextReport, /Message tokens ~[\d,]+ · schema tokens ~[\d,]+/);
-  assert.match(contextReport, /Sent [\d,]+ messages/);
+  assert.match(contextReport, /Retained [\d,]+ messages/);
   assert.match(contextReport, /context_info · ~[\d,]+ tokens · bundled context metadata/);
   assert.equal(requests.length, beforeCalls);
   assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true, "context settings must fit the app window");

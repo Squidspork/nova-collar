@@ -78,6 +78,11 @@ progress, pending obligations and next action. Preserve complete tool call and
 result pairs. Reserve the active model's output budget before its context fills.
 Summaries compress evidence; they do not create successful checks.
 
+Context inspection must remain useful when a request is too large. The next
+preview reports retained messages, schema costs and negative headroom with an
+explicit blocked-dispatch note. It neither sends the request nor replaces the
+last dispatched snapshot; the actual dispatch still fails its budget check.
+
 Project maps locate work and dated records. Their commands and relationships
 have provenance and remain observations until verified. Memory should preserve
 source, date, scope and verification evidence. Verified repair retrieval is not
