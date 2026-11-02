@@ -1,3 +1,4 @@
+import { ROOT } from "./config.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { isWindows, quoteShell } from "./platform.js";
@@ -9,7 +10,8 @@ export const CODE = new Set([".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".go",
 export const PAGE = new Set([".html", ".htm", ".css"]);
 export const TUI = /\b(curses|textual|blessed|prompt_toolkit|urwid|npyscreen)\b/i;
 const CRASH = /\b(Traceback|SyntaxError|ReferenceError|TypeError|panic:|FATAL EXCEPTION|Exception:)\b/;
-const VERIFIER = /(?:^|\/)(?:harness|intuition|safe)\.js$|(?:^|\/)harness\.json$/i;
+const VERIFIER = /(?:^|\/)(?:harness|harness-check|intuition|safe)\.js$|(?:^|\/)harness\.json$/i;
+const RUNTIME_VERIFIERS = new Set(["verification-ledger.js", "methodology.js", "conversation.js", "context.js", "context-info.js", "instruction-context.js", "helper-context.js", "skills.js", "project-memory.js", "project-map.js", "project-verification.js", "checkpoints.js"]);
 
 export function isCodePath(path) {
   return CODE.has(extname(String(path || "")).toLowerCase());
@@ -20,7 +22,11 @@ export function isPagePath(path) {
 }
 
 export function isVerifierPath(path) {
-  return VERIFIER.test(String(path || "").replace(/\\/g, "/"));
+  const normalized = String(path || "").replace(/\\/g, "/");
+  if (VERIFIER.test(normalized) || /(?:^|\/)(?:\.nova|\.novatag)\/checks\.json$/i.test(normalized)) return true;
+  const full = expandPath(path, getWorkdir()).replace(/\\/g, "/");
+  const runtime = join(ROOT, "src", "main").replace(/\\/g, "/") + "/";
+  return full.startsWith(runtime) && RUNTIME_VERIFIERS.has(basename(full));
 }
 
 export function isTestPath(path) {

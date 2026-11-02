@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { createConversationCoordinator } from "./conversation.js";
 import { analysisBundle, analysisManager } from "./analysis-runtime.js";
 import { networkRuntime } from './network-runtime.js';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
@@ -6,8 +8,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runTurn } from "./agent.js";
-import { APP_HOME, BIN, ensureHome, isLocalModel, loadConfig, markSetupDone, publicState, readMemory, saveKeys, saveLane, saveLocalModel } from "./config.js";
+import { previewContextInfo, runTurn } from "./agent.js";
+import { contextView, lastContextSnapshot } from "./context.js";
+import { APP_HOME, APP_NAME, BUILD_CHANNEL, BIN, ensureHome, isLocalModel, loadConfig, markSetupDone, publicState, readMemory, saveKeys, saveLane, saveLocalModel } from "./config.js";
 import { isBotId, isChatId, redactSecrets, safePack } from "./safe.js";
 import { setDeskGuard } from "./mac.js";
 import { packPublic } from "./packs.js";
@@ -45,6 +48,13 @@ let currentArchive = [];
 let currentBot = null;
 let localServers = [];
 let turnAbort = null;
+let conversationToken = null;
+let incorporatedIds = [];
+let activeTurnState = { active: false, inFlight: "" };
+let readOnlySession = false;
+const conversations = createConversationCoordinator({ onChange: (state, sessionId) => {
+  if (sessionId === currentId) send({ type: "conversation", ...state });
+} });
 const history = [];
 let inferenceHistory = [];
 
@@ -181,6 +191,9 @@ function snapshot() {
   return {
     ...publicState(cfg),
     approvals: pendingApprovals(),
+    channel: BUILD_CHANNEL,
+    conversation: currentId ? { ...conversations.snapshot(currentId), readOnly: readOnlySession } : null,
+    contextInfo: currentId ? lastContextSnapshot(currentId) : null,
     analysis: analysisManager.status(),
     localModels: localServers.flatMap((server) => server.models.map((model) => ({ url: server.url, model }))),
     npReady: existsSync(join(homedir(), ".local", "bin", "np")),
@@ -205,6 +218,7 @@ function snapshot() {
 }
 
 let boardBusy = false;
+let boardAbort = null;
 
 async function runScheduled(job) {
   const task = job?.task;
@@ -215,6 +229,9 @@ async function runScheduled(job) {
   const session = readSession(bot.id);
   const prior = session?.messages || [];
   const signal = new AbortController();
+  boardAbort = signal;
+  let token = null;
+  const steps = [];
   const text = [
     task.title,
     task.detail || "",
@@ -224,7 +241,17 @@ async function runScheduled(job) {
     job.note ? `Another goal you can help: ${job.note}` : "",
   ].filter(Boolean).join("\n");
   try {
-    const result = await runTurn(prior, text, () => {}, signal.signal, {
+    try { token = conversations.start(bot.id); } catch { return { skip: true }; }
+    beginTurn({ signal: signal.signal, workdir: getWorkdir() });
+    const result = await runTurn(session?.modelMessages?.length ? session.modelMessages : prior, text, event => {
+      if (event.type === "tool_result") steps.push({ role: "step", ...event });
+    }, signal.signal, {
+      sessionId: bot.id,
+      onProgress: (rows, inFlight) => {
+        const wire = [...rows];
+        if (inFlight) wire.push({ role: "tool", tool_call_id: inFlight.id, content: `Interrupted ${inFlight.name}: outcome unknown. Inspect before retrying.` });
+        persistSession(bot.id, [...prior, { role: "user", content: text }, ...steps], { title: bot.name, modelMessages: wire, turnState: { active: true, inFlight: inFlight?.name || "" } });
+      },
       bot: readBot(bot.id) || bot,
       pack: bot.pack,
       goal: task.goal,
@@ -236,7 +263,7 @@ async function runScheduled(job) {
     const assistant = result?.assistant || "";
     let chatId = task.chatId || "";
     if (assistant) {
-      persistSession(bot.id, [...prior, { role: "user", content: text }, { role: "assistant", content: assistant }], { title: bot.name });
+      persistSession(bot.id, [...prior, { role: "user", content: text }, ...steps, { role: "assistant", content: assistant }], { title: bot.name, modelMessages: result.messages || [], turnState: { active: false, inFlight: "" } });
       const chat = fileChat({
         id: chatId,
         title: `Pack · ${task.title}`,
@@ -251,6 +278,9 @@ async function runScheduled(job) {
   } catch (error) {
     return { assistant: "", error: redactSecrets(error.message || "Run failed.") };
   } finally {
+    endTurn();
+    if (token) conversations.finish(token, { reason: signal.signal.aborted ? "stopped" : "finished" });
+    boardAbort = null;
     boardBusy = false;
   }
 }
@@ -287,14 +317,45 @@ function applyWorkdir(path, opts = {}) {
   return next;
 }
 
-function useSession(session) {
+function useSession(session, { reconcile = true } = {}) {
+  incorporatedIds = session.inputIds || [];
+  readOnlySession = false;
+  if (reconcile) try { conversations.reconcile(session.id, incorporatedIds); }
+  catch (error) {
+    if (error.code !== "LEAD_BUSY") throw error;
+    readOnlySession = true;
+  }
   currentId = session.id;
   currentGoal = String(session.goal || "");
   currentArchive = Array.isArray(session.archive) ? session.archive : [];
   history.length = 0;
   history.push(...session.messages);
   inferenceHistory = session.modelMessages?.length ? cleanModelHistory(session.modelMessages) : mergeAssistants(history);
+  activeTurnState = session.turnState || { active: false, inFlight: "" };
+  if (!readOnlySession && session.turnState?.active) {
+    const note = session.turnState.inFlight
+      ? `Previous turn interrupted during ${session.turnState.inFlight}. Its outcome is unknown. Inspect external state before retrying.`
+      : "Previous turn interrupted. Completed evidence is saved. Send a message or choose Continue to resume deliberately.";
+    history.push({ role: "assistant", content: note });
+    inferenceHistory.push({ role: "assistant", content: note });
+    activeTurnState = { active: false, inFlight: "" }; saveCurrent();
+  }
+  const answered = conversations.snapshot(currentId).answeredQuestion;
+  if (!readOnlySession && answered && !incorporatedIds.includes(answered.id)) {
+    const words = answered.answers.map(row => redactSecrets(row.answer)).join("\n");
+    history.push({ role: "user", content: words });
+    inferenceHistory.push({ role: "user", content: words });
+    incorporatedIds.push(answered.id);
+    saveCurrent();
+  }
   send({ type: "goal", text: currentGoal, archive: currentArchive.slice(-6) });
+}
+
+function saveCurrent() {
+  if (!currentId || readOnlySession) return;
+  const extra = { modelMessages: inferenceHistory, inputIds: incorporatedIds, turnState: activeTurnState };
+  if (currentBot) persistSession(currentId, history, { ...extra, title: currentBot.name });
+  else saveSession(currentId, history, extra);
 }
 
 function persistTurn(userText, rows = [], modelMessages = null) {
@@ -326,8 +387,8 @@ function persistTurn(userText, rows = [], modelMessages = null) {
     }
   }
   if (!currentId) return;
-  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory });
-  else saveSession(currentId, history, { modelMessages: inferenceHistory });
+  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory, inputIds: incorporatedIds });
+  else saveSession(currentId, history, { modelMessages: inferenceHistory, inputIds: incorporatedIds });
 }
 
 function sleep(ms) {
@@ -351,16 +412,16 @@ setDeskGuard(async (fn) => {
   }
 });
 
-app.setName("Nova Collar");
+app.setName(APP_NAME);
 // Window storage (tips, theme, pack) stays in the package-named folder, not the display name's.
-app.setPath("userData", join(app.getPath("appData"), "novapup"));
+app.setPath("userData", join(app.getPath("appData"), "nova-collar-public"));
 app.commandLine.appendSwitch("touch-events", "enabled");
 
 function startAutoUpdate() {
   // Packaged builds look at the configured GitHub releases for a newer version,
   // download it, and notify; electron-updater installs it on the next quit.
   // No-op in dev, and any failure (offline, private repo) is swallowed.
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || BUILD_CHANNEL !== "public") return;
   try {
     const { autoUpdater } = createRequire(import.meta.url)("electron-updater");
     autoUpdater.autoDownload = true;
@@ -403,6 +464,7 @@ app.on("before-quit", event => {
   stopBoard();
   stopLaya();
   turnAbort?.abort();
+  boardAbort?.abort();
   if (!analysisQuitReady && (analysisManager.sessions.size || networkRuntime.client || networkRuntime.connecting)) {
     event.preventDefault();
     Promise.allSettled([analysisManager.closeAll(), networkRuntime.close()]).finally(() => { analysisQuitReady = true; app.quit(); });
@@ -411,6 +473,13 @@ app.on("before-quit", event => {
 app.on("window-all-closed", () => app.quit());
 
 ipcMain.handle("state", (event) => (fromWindow(event) ? snapshot() : {}));
+ipcMain.handle("context:info", (event, body = {}) => {
+  if (!fromWindow(event)) return { ok: false, error: "denied" };
+  try {
+    const view = contextView(body);
+    return { ok: true, snapshot: view === "last" ? lastContextSnapshot(currentId) : previewContextInfo(modelHistory(), { sessionId: currentId }) };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
 ipcMain.handle("approval:resolve", (event, body) => fromWindow(event) && resolveApproval(body?.id, body?.allowed === true));
 
 ipcMain.handle("analysis:pick", async event => {
@@ -517,12 +586,13 @@ ipcMain.handle("model:lane", (event, body) => {
 ipcMain.handle("sessions:list", (event) => (fromWindow(event) ? listSessions() : { current: null, chats: [] }));
 
 function parkCurrent() {
-  if (!currentId) return;
-  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory });
-  else saveSession(currentId, history, { modelMessages: inferenceHistory });
+  if (!currentId || readOnlySession) return;
+  if (currentBot) persistSession(currentId, history, { title: currentBot.name, modelMessages: inferenceHistory, inputIds: incorporatedIds });
+  else saveSession(currentId, history, { modelMessages: inferenceHistory, inputIds: incorporatedIds });
 }
 
 ipcMain.handle("sessions:new", (event) => {
+  if (turnAbort) return { ok: false, error: "Stop the current turn before changing chats or folders." };
   if (!fromWindow(event)) return {};
   parkCurrent();
   currentBot = null;
@@ -531,6 +601,7 @@ ipcMain.handle("sessions:new", (event) => {
 });
 
 ipcMain.handle("workdir:set", (event, path) => {
+  if (turnAbort) return { ok: false, error: "Stop the current turn before changing chats or folders." };
   if (!fromWindow(event)) return { ok: false };
   return applyWorkdir(String(path || ""), { create: true });
 });
@@ -543,10 +614,12 @@ ipcMain.handle("workdir:pick", async (event) => {
     properties: ["openDirectory", "createDirectory"],
   });
   if (picked.canceled || !picked.filePaths[0]) return { ok: false, cancelled: true, path: getWorkdir() };
+  if (turnAbort) return { ok: false, error: "Stop the current turn before changing folders." };
   return applyWorkdir(picked.filePaths[0]);
 });
 
 ipcMain.handle("sessions:open", (event, id) => {
+  if (turnAbort) return { ok: false, error: "Stop the current turn before changing chats or folders." };
   if (!fromWindow(event)) return {};
   if (!isChatId(id) || id === currentId) return snapshot();
   parkCurrent();
@@ -622,6 +695,7 @@ ipcMain.handle("tasks:save", (event, input) => {
 });
 
 ipcMain.handle("bots:open", (event, id) => {
+  if (turnAbort) return { ok: false, error: "Stop the current turn before changing chats or folders." };
   if (!fromWindow(event)) return {};
   if (!isBotId(id)) return snapshot();
   if (currentBot?.id === id && currentId === id) return snapshot();
@@ -700,13 +774,50 @@ function reportWatchdog(killed) {
 
 ipcMain.handle("stop", (event) => {
   if (!fromWindow(event)) return { ok: false };
+  if (conversationToken) conversations.pause(conversationToken, "stopped");
   turnAbort?.abort();
+  boardAbort?.abort();
   return { ok: true };
 });
 
-ipcMain.handle("chat", async (event, payload) => {
+ipcMain.handle("question:answer", (event, body) => {
+  if (!fromWindow(event) || !currentId) return { ok: false, error: "denied" };
+  try { return conversations.answer(currentId, body?.requestId, body?.answers); }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle("input:resume", (event) => {
+  if (!fromWindow(event)) return { ok: false, error: "denied" };
+  return chatFromWindow(event, { text: "Continue the saved work using the evidence already recorded. Inspect any action with an unknown outcome before retrying it.", resume: true });
+});
+
+ipcMain.handle("chat", chatFromWindow);
+async function chatFromWindow(event, payload) {
   if (!fromWindow(event)) return { ok: false, error: "denied" };
   const text = (typeof payload === "string" ? payload : String(payload?.text || "")).slice(0, 24_000);
+  if (!text.trim()) return { ok: false, error: "Write a message first." };
+  if (boardBusy) return { ok: false, error: "A scheduled task is working. Stop it before starting another lead turn." };
+  if (turnAbort) {
+    try {
+      const queued = conversations.enqueue(currentId, redactSecrets(text));
+      send({ type: "user_input", id: queued.id, text: queued.content });
+      return { ok: true, queued: true, id: queued.id };
+    } catch (error) { return { ok: false, error: error.message }; }
+  }
+  // Acquire the profile lead before goal commands, approval releases, or any
+  // other chat mutation. A foreign CLI lead may be viewed but never rewritten.
+  try { conversationToken = conversations.start(currentId, { resume: true }); }
+  catch (error) { return { ok: false, error: error.message }; }
+  try {
+    const latest = readSession(currentId);
+    if (latest) useSession(latest, { reconcile: false });
+    return await runWindowLead(event, payload, text);
+  } finally {
+    if (conversationToken) { conversations.finish(conversationToken, { reason: "unfinished" }); conversationToken = null; }
+    turnAbort = null;
+  }
+}
+
+async function runWindowLead(event, payload, text) {
   const pack = safePack(typeof payload === "object" && payload ? payload.pack : "");
   const cfg = loadConfig();
   if (platform() === "darwin" && !existsSync(BIN)) {
@@ -739,56 +850,98 @@ ipcMain.handle("chat", async (event, payload) => {
     return { ok: false, error: "need-keys" };
   }
   const runText = goalCmd.runText || text;
+  const priorMessages = modelHistory();
+  const baseRows = history.slice();
+  const userRows = [{ role: "user", content: redactSecrets(text), id: randomUUID(), createdAt: new Date().toISOString() }];
+  const evidenceRows = [];
+  let progressMessages = [...priorMessages, { role: "user", content: redactSecrets(runText) }];
+  let finalText = "";
+  let finishReason = "unfinished";
+  const checkpoint = (messages = progressMessages, inFlight = null) => {
+    progressMessages = messages;
+    activeTurnState = { active: true, inFlight: inFlight?.name || "" };
+    const wire = [...messages];
+    if (inFlight) wire.push({ role: "tool", tool_call_id: inFlight.id,
+      content: `Interrupted action ${inFlight.name}: outcome unknown. It may already have changed external state. Inspect the result before retrying. Do not replay automatically.` });
+    inferenceHistory = cleanModelHistory(wire);
+    history.length = 0;
+    history.push(...baseRows, ...userRows, ...evidenceRows, ...(finalText ? [{ role: "assistant", content: finalText }] : []));
+    if (finalText) activeTurnState = { active: false, inFlight: "" };
+    saveCurrent();
+  };
   turnAbort = new AbortController();
   beginTurn({ termPid: term?.pid, signal: turnAbort.signal, workdir: getWorkdir() });
+  const tape = createTimeline();
   try {
-    const tape = createTimeline();
-    const result = await runTurn(modelHistory(), runText, (payload) => {
+    checkpoint();
+    const result = await runTurn(priorMessages, runText, (payload) => {
       if (payload?.type === "retract") tape.retract();
       if (payload?.type === "delta") tape.delta(payload.text);
-      if (payload?.type === "tool_result") tape.step(payload);
+      if (payload?.type === "tool_result") {
+        tape.step(payload);
+        evidenceRows.push({ role: "step", name: payload.name, pack: payload.pack || "", ok: payload.ok !== false,
+          blurb: payload.blurb || "", detail: payload.detail || "", ...(payload.verification ? { verification: structuredClone(payload.verification) } : {}), ...(payload.contextSelection ? { contextSelection: structuredClone(payload.contextSelection) } : {}) });
+      }
       send(payload);
-    }, turnAbort.signal, { pack: pack || currentBot?.pack || "", bot: currentBot, goal: currentGoal });
+    }, turnAbort.signal, {
+      sourceMessages: () => history, originalRequestId: userRows[0].id,
+      sessionId: currentId, pack: pack || currentBot?.pack || "", bot: currentBot, goal: currentGoal,
+      onProgress: checkpoint,
+      takeInput: () => {
+        const batch = conversations.peek(conversationToken);
+        if (!batch) return null;
+        const messages = [];
+        for (const row of batch.messages) {
+          if (incorporatedIds.includes(row.id)) continue;
+          userRows.push({ role: "user", content: row.content, id: row.id, createdAt: new Date(row.created).toISOString() });
+          incorporatedIds.push(row.id);
+          messages.push(row);
+        }
+        if (!messages.length) { conversations.ack(conversationToken, batch.receipt); return null; }
+        return { ...batch, messages };
+      },
+      ackInput: batch => conversations.ack(conversationToken, batch.receipt),
+      askUser: async args => {
+        const answer = await conversations.ask(conversationToken, args, { signal: turnAbort.signal });
+        const words = answer.answers.map(row => redactSecrets(row.answer)).join("\n");
+        userRows.push({ role: "user", content: words, id: answer.requestId, createdAt: new Date().toISOString() });
+        incorporatedIds.push(answer.requestId);
+        checkpoint([...progressMessages, { role: "user", content: words }]);
+        send({ type: "user_input", id: answer.requestId, text: words });
+        return answer;
+      },
+    });
     const leftovers = reportWatchdog(endTurn());
-    if (leftovers.length) {
-      tape.step({
-        name: "watchdog",
-        ok: false,
-        blurb: "Caught a runaway",
-        detail: leftovers.map((row) => row.why).join("\n"),
-      });
-    }
-    for (const entry of result.archive || []) {
-      if (currentId) currentArchive = pushArchive(currentId, entry);
-      else currentArchive = [...currentArchive, entry].slice(-24);
-    }
+    if (leftovers.length) evidenceRows.push({ role: "step", name: "watchdog", ok: false, blurb: "Caught a runaway", detail: leftovers.map(row => row.why).join("\n") });
+    for (const entry of result.archive || []) currentArchive = pushArchive(currentId, entry);
     if (result.goalStatus === "done" && currentGoal && currentId) {
-      currentGoal = writeGoal(currentId, "");
-      send({ type: "goal", text: "", archive: currentArchive.slice(-6) });
+      currentGoal = writeGoal(currentId, ""); send({ type: "goal", text: "", archive: currentArchive.slice(-6) });
     }
-    persistTurn(text, tape.finish(result.assistant), result.messages?.length ? result.messages : null);
-    send({ type: "done", text: result.assistant });
-    teachAfter(runText);
-    senseAfter(history);
-    return { ok: true };
+    finalText = result.assistant || "No reply.";
+    const completedWire = [...(result.messages || progressMessages)];
+    if (completedWire.at(-1)?.role !== "assistant" || completedWire.at(-1)?.content !== finalText) completedWire.push({ role: "assistant", content: finalText });
+    checkpoint(completedWire);
+    finishReason = result.held ? "held" : "finished";
+    // finish pauses late arrivals instead of starting an unsolicited extra turn.
+    conversations.finish(conversationToken, { reason: finishReason }); conversationToken = null;
+    send({ type: "done", text: finalText });
+    teachAfter(runText); senseAfter(history);
+    return { ok: true, held: result.held };
   } catch (error) {
     const leftovers = reportWatchdog(endTurn());
-    const timedOut = error.name === "TimeoutError" || /timeout/i.test(error.message || "");
-    const stopped = !timedOut && (error.name === "AbortError" || /stopped/i.test(error.message || ""));
-    const reply = timedOut
-      ? "That turn timed out. Say go and I’ll pick up from the last tool."
-      : stopped
-        ? "Stopped."
-        : redactSecrets(error.message || "That failed.");
-    persistTurn(text, [
-      ...leftovers.length ? [{ role: "step", name: "watchdog", ok: false, blurb: "Caught a runaway", detail: leftovers.map((row) => row.why).join("\n") }] : [],
-      { role: "assistant", content: reply },
-    ]);
-    send({ type: stopped ? "done" : "error", text: reply });
-    senseAfter(history);
+    const stopped = turnAbort.signal.aborted || error.name === "AbortError";
+    finishReason = stopped ? "stopped" : "error";
+    finalText = stopped ? "Stopped. Saved input is paused. Continue when you are ready." : redactSecrets(error.message || "That failed.");
+    evidenceRows.push(...leftovers.map(row => ({ role: "step", name: "watchdog", ok: false, blurb: "Caught a runaway", detail: row.why })));
+    // Keep the last persisted uncertain action receipt; do not replace it with a raw partial batch.
+    const savedWire = inferenceHistory;
+    checkpoint([...savedWire, { role: "assistant", content: finalText }]);
+    if (conversationToken) { conversations.finish(conversationToken, { reason: finishReason }); conversationToken = null; }
+    send({ type: stopped ? "done" : "error", text: finalText });
     send({ type: "mood", mood: "idle", text: "here" });
-    return { ok: !stopped, error: stopped ? undefined : error.message, stopped };
+    return { ok: false, error: stopped ? undefined : error.message, stopped };
   } finally {
+    if (conversationToken) { conversations.finish(conversationToken, { reason: finishReason }); conversationToken = null; }
     turnAbort = null;
   }
-});
+}

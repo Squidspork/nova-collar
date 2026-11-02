@@ -23,6 +23,8 @@ export function createTimeline() {
         name: row.name,
         pack: row.pack || "",
         ok: row.ok !== false,
+        ...(row.verification ? { verification: structuredClone(row.verification) } : {}),
+        ...(row.contextSelection ? { contextSelection: structuredClone(row.contextSelection) } : {}),
         blurb: row.blurb || "",
         detail: row.detail || "",
       });

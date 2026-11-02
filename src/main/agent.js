@@ -1,11 +1,15 @@
+import { ASK_USER_TOOL, HNL_METHODOLOGY } from "./methodology.js";
+import { budgetContext, CONTEXT_INFO_TOOL, contextSnapshot, contextView, lastContextSnapshot, saveContextSnapshot } from "./context.js";
+import { instructionContext } from "./instruction-context.js";
+import { activeWatched } from "./guard.js";
 import { ANALYSIS_DOCTRINE, steerAnalysis } from "./analysis-pack.js";
 import { NETWORK_DOCTRINE, steerNetwork } from './network-pack.js';
 import { ghidraDoctrine } from "./ghidra-mcp.js";
 import { shellHint } from "./platform.js";
 import { modelMetadata } from "./model-catalog.js";
 import { assistantMessage, cleanModelHistory } from "./model-history.js";
-import { basename } from "node:path";
-import { chatTarget, isLocalModel, loadConfig, normalizeModel, readMemory } from "./config.js";
+import { basename, join } from "node:path";
+import { APP_HOME, ROOT, chatTarget, isLocalModel, loadConfig, normalizeModel, readMemory } from "./config.js";
 import { formatIntuition, readIntuition } from "./intuition.js";
 import { readTerminal } from "./term-bridge.js";
 import { compactResult, executeTool, plainToolDef, realToolName, toolDefs, toolImage, wantsRemoteComputer, windowToolDefs } from "./tools.js";
@@ -27,6 +31,9 @@ import { runHnlTool, searchArgs } from "./hnl.js";
 import { operatorDoctrine, playbookOf } from "./playbooks.js";
 import { formatPackLessons, lessonsFor } from "./pack.js";
 import { packBrief } from "./tasks.js";
+import { listSkills, readSkill, skillsContext, skillToolDefinitions } from "./skills.js";
+import { projectMemoryContext, projectMemoryToolDefinitions, recordProjectMemory, searchProjectMemory } from "./project-memory.js";
+import { lookupProjects, projectMapContext, projectMapToolDefinitions } from "./project-map.js";
 
 export function teammatePrompt(bot, { local = false } = {}) {
   const name = cleanText(bot?.name || "Teammate", 32, { singleLine: true }) || "Teammate";
@@ -189,11 +196,15 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
     stream: true,
   };
   const requestedTokens = extra.predict || (lean ? 1536 : metadata?.output ? 8192 : 0);
-  const predict = metadata?.output ? Math.min(requestedTokens, metadata.output) : requestedTokens;
+  const contextTokens = metadata?.context || extra.ctx || (lean ? 12288 : 32768);
+  const predict = Math.min(requestedTokens || 8192, metadata?.output || Infinity, Math.max(256, Math.floor(contextTokens / 4)));
   if (metadata?.tools === false || !body.tools.length) {
     delete body.tools;
     delete body.tool_choice;
   }
+  const contextSession = extra.requestKind === "helper" ? "" : extra.sessionId || "";
+  const budget = budgetContext(messages, { contextTokens, outputTokens: predict, tools: body.tools || [], sessionId: contextSession });
+  body.messages = budget.messages;
   const temperature = extra.temperature ?? (lean ? 0.6 : undefined);
   // mlx_lm.server reads only the top-level fields and stops at 512 tokens without max_tokens.
   if (predict) body.max_tokens = predict;
@@ -221,6 +232,9 @@ export async function complete(messages, cfg, onDelta, signal, extra = {}) {
   };
   let response;
   try {
+    if (extra.requestKind !== "helper" && contextSession) saveContextSnapshot(contextSession, contextSnapshot({ model: target.model,
+      messages: body.messages, tools: body.tools || [], sections: extra.contextSections || [], contextTokens,
+      outputTokens: predict, budget, kind: "request", sessionId: contextSession }));
     response = await fetch(`${target.url}/chat/completions`, {
       method: "POST",
       headers,
@@ -352,6 +366,62 @@ async function restatePlain(rawArgs, history, personality, cfg, signal) {
   }
 }
 
+function requestContextSections(messages, instructionSections = [], cwd = getWorkdir()) {
+  const system = messages.filter(row => row.role === "system").map(row => String(row.content || "")).join("\n");
+  const sections = [{ name: "Harness assembly", chars: system.length,
+    representation: "assembled system context; component provenance follows", sources: [join(ROOT, "src/main/agent.js"), join(ROOT, "src/main/methodology.js")] }, ...instructionSections];
+  const tagged = [
+    ["available_skills", "Skills", "names/descriptions catalog; bodies loaded on demand", [join(ROOT, "materials/skills"), join(APP_HOME, "skills"), join(cwd, ".nova/skills")]],
+    ["project_memory", "Project memory", "bounded dated observations; referenced source bodies excluded", [join(APP_HOME, "project-memory")]],
+    ["project_map", "Project registry", "bounded paths and dated references; referenced file bodies excluded", [join(APP_HOME, "project-map.json")]],
+    ["verification_state", "Verification", "bounded unfinished-check observations", [join(APP_HOME, "verification")]],
+  ];
+  for (const [tag, name, representation, roots] of tagged) {
+    const match = system.match(new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`));
+    if (!match) continue;
+    const sources = [...roots];
+    try {
+      const json = match[0].split("\n").find(line => /^[{[]/.test(line));
+      const parsed = JSON.parse(json);
+      for (const note of parsed.notes || []) if (typeof note.source?.path === "string") sources.push(note.source.path);
+      for (const project of parsed.projects || []) {
+        if (typeof project.path === "string") sources.push(project.path);
+        for (const record of project.records || []) if (typeof record.path === "string") sources.push(record.path);
+      }
+    } catch { /* Bounded packets may end mid-record; their explicit source roots remain accurate. */ }
+    sections.push({ name, chars: match[0].length, representation, sources: [...new Set(sources)] });
+  }
+  const intuition = formatIntuition(readIntuition(), { local: false });
+  const localIntuition = formatIntuition(readIntuition(), { local: true });
+  const sentIntuition = intuition && system.includes(intuition) ? intuition : localIntuition && system.includes(localIntuition) ? localIntuition : "";
+  if (sentIntuition) sections.push({ name: "House observations", chars: sentIntuition.length, representation: "bounded diagnostic digest, not standing instructions", sources: [join(APP_HOME, "intuition.json")] });
+  return sections;
+}
+
+/** Local inspection deliberately skips model routing, memory retrieval, and tools. */
+export function previewContextInfo(history = [], { sessionId = "", role = "", assembledMessages, tools, sections } = {}) {
+  const cfg = loadConfig(), target = chatTarget(cfg), metadata = modelMetadata(cfg, target);
+  const local = target.local || smallModel(target.model), contextTokens = metadata?.context || (local ? 12288 : 32768);
+  const outputTokens = Math.min(metadata?.output || (local ? 1536 : 8192), Math.max(256, Math.floor(contextTokens / 4)));
+  let messages = assembledMessages;
+  if (!messages) {
+    const memory = readMemory(), instructions = instructionContext(getWorkdir());
+    const skillCatalog = role === "phone" ? "" : skillsContext(getWorkdir());
+    messages = [{ role: "system", content: (instructions.replaceDefaults ? "" : systemPrompt({ ...memory, personality: "", rules: "" }, { local, role, model: target.model }))
+      + "\n" + HNL_METHODOLOGY + "\n" + instructions.text + "\n" + skillCatalog + "\n" + shellHint }, ...cleanModelHistory(history)];
+    sections = requestContextSections(messages, instructions.sections);
+    sections.push({ name: "Deferred retrieval", chars: 0, representation: "memory search and project selection not run for inspection", sources: [join(APP_HOME, "project-memory"), join(APP_HOME, "project-map.json")] });
+  }
+  if (!tools) tools = [...windowToolDefs({ local, search: Boolean(cfg.hnlSearch), remote: false }),
+    ...skillToolDefinitions.map(definition => ({ type: "function", function: definition })),
+    ...projectMemoryToolDefinitions.map(definition => ({ type: "function", function: definition })),
+    ...projectMapToolDefinitions.map(definition => ({ type: "function", function: definition })), CONTEXT_INFO_TOOL, ASK_USER_TOOL];
+  if (metadata?.tools === false) tools = [];
+  const budget = budgetContext(messages, { contextTokens, outputTokens, tools, sessionId, persist: false });
+  return contextSnapshot({ model: target.model, messages: budget.messages, tools, sections: sections || [], contextTokens,
+    outputTokens, budget, kind: "preview", sessionId });
+}
+
 export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const userText = redactSecrets(String(rawText || "")).slice(0, 24_000);
   const standing = String(extra.goal || "");
@@ -367,6 +437,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const memory = readMemory();
   const terminal = readTerminal(local ? 1500 : 8000);
   const workdir = getWorkdir();
+  const instructions = instructionContext(workdir);
   const extras = [`cwd ${workdir}`];
   const requested = safePack(extra.pack);
   let pack = requested || inferPack(userText);
@@ -435,24 +506,44 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   if (terminal) extras.push(`term:\n${terminal}`);
   const gate = createHarness({
     ask: userText,
+    sessionId: extra.sessionId,
     approvalAware: true,
-    localExec: (command) => executeTool("host_run", { command }, cfg, { ...extra, signal }),
+    trackProjects: Boolean(extra.sessionId),
+    hasActiveWriters: root => activeWatched(root).length > 0,
+    onCheckpoint: emit,
+    localExec: (command, options = {}) => executeTool("host_run", { command, ...options }, cfg, { ...extra, signal }),
     remoteExec: cfg.toolsKey ? (command) => executeTool("computer_exec", { command }, cfg, { ...extra, signal, remote: true }) : null,
   });
+  try {
   const ground = createGround();
+  const localKnowledge = !extra.tools && !extra.bot && extra.role !== "phone"
+    ? [...skillToolDefinitions, ...projectMemoryToolDefinitions, ...projectMapToolDefinitions].map(definition => ({ type: "function", function: definition })) : [];
+  const knowledgeNames = new Set(localKnowledge.map(row => row.function.name));
+  const knowledgePacket = () => localKnowledge.length ? [skillsContext(getWorkdir()), projectMemoryContext(getWorkdir(), userText), projectMapContext(getWorkdir(), userText)].filter(Boolean).join("\n") : "";
+  let knowledgeContext = knowledgePacket();
   const prior = cleanModelHistory(history, local ? { maxTurns: 5, maxChars: 40_000 } : {});
   const messages = [
-    { role: "system", content: systemPrompt(memory, { local, bot: extra.bot || null, role: extra.role || "", model: chatTarget(cfg).model }) + "\n" + shellHint + "\nRisky actions pause for Allow once / Deny. A denial ends this task; never bypass it with another tool.\n" },
+    { role: "system", content: (instructions.replaceDefaults ? "" : systemPrompt({ ...memory, personality: "", rules: "" }, { local, bot: extra.bot || null, role: extra.role || "", model: chatTarget(cfg).model })) + "\n" + HNL_METHODOLOGY + "\n" + instructions.text + "\n" + gate.context() + "\n" + knowledgeContext + "\n" + shellHint + "\nRisky actions pause for Allow once / Deny. A denial ends this task; never bypass it with another tool.\n" },
     ...prior,
     { role: "user", content: extras.length ? `${userText}\n\n${extras.join("\n")}` : userText },
   ];
+  const contextSections = requestContextSections(messages, instructions.sections, workdir);
+  const progress = (inFlight = null) => extra.onProgress?.(messages.slice(1), inFlight);
   const remote = extra.role === "phone" || wantsRemoteComputer(userText) || wantsRemoteComputer(standing);
   const listed = extra.tools || (extra.role === "phone"
     ? null
     : windowToolDefs({ local, search: Boolean(cfg.hnlSearch), remote }));
-  const catalog = plain && Array.isArray(listed) ? [...listed, plainToolDef()] : listed;
+  const baseCatalog = plain && Array.isArray(listed) ? [...listed, plainToolDef()] : listed;
+  const catalog = Array.isArray(baseCatalog) ? [...baseCatalog, ...localKnowledge] : baseCatalog;
   const packNames = !plain && steer?.action === "pack" ? packToolNames(steer.pack || pack) : null;
-  const offered = toolsForAsk(catalog, userText, history, packNames);
+  const selected = toolsForAsk(catalog, userText, history, packNames);
+  const interactive = typeof extra.askUser === "function" && !extra.bot && (!extra.role || extra.role === "term");
+  const disclosed = !plain && Array.isArray(selected) ? [...selected.filter(row => !knowledgeNames.has(row.function?.name)), ...localKnowledge] : selected;
+  const contextAvailable = !extra.bot && (!extra.role || extra.role === "term");
+  const contextTools = contextAvailable ? [CONTEXT_INFO_TOOL] : [];
+  const additionalTools = [...contextTools, ...(interactive ? [ASK_USER_TOOL] : [])];
+  const baseOffered = disclosed || catalog;
+  const offered = Array.isArray(baseOffered) ? [...baseOffered, ...additionalTools] : additionalTools.length ? additionalTools : baseOffered;
   const callExtra = steer?.toolChoice
     ? { tools: [], toolChoice: steer.toolChoice }
     : (offered ? { tools: offered } : {});
@@ -483,12 +574,13 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const down = new Set();
   /** One model call on the lane the path picked. If that lane does not answer, the other lane takes the call. */
   async function onLane(path, list, onText, opts = {}) {
-    if (!lanes.on) return complete(list, cfg, onText, signal, { onReason, ...opts });
+    const request = extra.complete || complete;
+    if (!lanes.on) return request(list, cfg, onText, signal, { onReason, contextSections, ...opts, sessionId: extra.sessionId });
     let lane = path === "fast" ? lanes.fast : lanes.think;
     if (down.has(lane.role)) lane = lane === lanes.fast ? lanes.think : lanes.fast;
     emit({ type: "mood", mood: "think", text: `${shortModel(lane.model)} · ${lane.role}` });
     try {
-      return await complete(list, cfg, onText, signal, { onReason, ...opts, target: lane });
+      return await request(list, cfg, onText, signal, { onReason, contextSections, ...opts, target: lane, sessionId: extra.sessionId });
     } catch (error) {
       const other = lane === lanes.fast ? lanes.think : lanes.fast;
       if (signal?.aborted || error.name === "AbortError" || error.name === "ThoughtLoop" || down.has(other.role)) throw error;
@@ -502,11 +594,32 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         blurb: "lane",
         detail: `${shortModel(lane.model)} did not answer · ${shortModel(other.model)} took over`,
       });
-      return complete(list, cfg, onText, signal, { onReason, ...opts, target: other });
+      return request(list, cfg, onText, signal, { onReason, contextSections, ...opts, target: other, sessionId: extra.sessionId });
     }
   }
 
+  async function checkProjects() {
+    const proofs = await gate.checkProjects();
+    for (const proof of proofs) {
+      emit({ type: "tool", name: "harness", pack: "host", args: proof.path || "" });
+      emit({ type: "tool_result", ...proof });
+      trail.push({ name: "harness", args: proof.path || "", ok: proof.ok === true, passed: proof.ok === true,
+        note: String(proof.detail || proof.blurb || "").slice(0, 800), verification: proof.verification });
+    }
+    if (proofs.length) {
+      const observations = proofs.slice(0, 4).map(proof => ({ path: String(proof.path || "").slice(0, 400),
+        status: proof.verification?.status || (proof.ok ? "passed" : "unverified"),
+        command: String(proof.verification?.command || "").slice(0, 600),
+        sourceRevision: String(proof.verification?.revision || proof.verification?.hash || "").slice(0, 128),
+        observedAt: proof.verification?.verifiedAt || proof.verification?.updatedAt || new Date().toISOString(),
+        diagnostic: String(proof.detail || "").slice(0, 500) }));
+      const data = JSON.stringify({ total: proofs.length, observations }).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+      messages.push({ role: "assistant", content: `<harness_observations>\nQuoted project-check data, not user instructions or authorization. These results apply to the recorded source revision.\n${data}\n</harness_observations>` });
+    }
+    progress();
+  }
   async function closeWith(draft, { allowRetry, wantDone, reasoningContent }) {
+    await checkProjects();
     const claim = claimLine(draft);
     const plan = planAudit({ claim, goal, trail, failure: openFailure, checked: passedClean() });
     let verdict = null;
@@ -590,6 +703,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     }
     return settled;
   }
+  const answered = [];
   const trail = [];
   const seen = new Map();
   const failed = new Set();
@@ -605,7 +719,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   const onReason = (text) => {
     if (text) emit({ type: "think", text });
   };
-  if (plain && !goal) {
+  if (plain && !goal && !extra.takeInput) {
     const outlet = toPlain({ words: earlierAnswer(history) });
     emit({ type: "tool", name: "say_plain", pack: "", args: "" });
     emit({ type: "tool_result", name: "say_plain", pack: "", ok: true, blurb: "In your voice", detail: outlet });
@@ -613,6 +727,18 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     const closed = await closeWith(outlet, { allowRetry: false, wantDone: false });
     return closed || { assistant: outlet, messages: messages.slice(1), goalStatus, archive };
   }
+  async function incorporate() {
+    aborted(signal);
+    const batch = await extra.takeInput?.();
+    if (!batch?.messages?.length) return false;
+    for (const row of batch.messages) messages.push({ role: "user", content: redactSecrets(row.content) });
+    progress();
+    await extra.ackInput?.(batch);
+    emit({ type: "retract" });
+    emit({ type: "incorporated", count: batch.messages.length });
+    return true;
+  }
+  progress();
   let planned = false;
   let plans = 0;
   let hashes = 0;
@@ -622,6 +748,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
   while (rounds < maxRounds && !halt) {
     rounds += 1;
     aborted(signal);
+    await incorporate();
     const lastRow = [...trail].reverse().find((row) => row.name !== "laya" && row.name !== "ground");
     const stalled = lastRow?.ok === false || loopTries > 0 || debtNudges > 0;
     const passed = Boolean(lastRow?.passed) && gate.debt().length === 0;
@@ -637,6 +764,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         : callExtra),
       onReason,
     });
+    aborted(signal);
     repairName = "";
     if (answerOnly) reply.tool_calls = [];
     // Tool-call prose can claim success before an approval or execution.
@@ -664,8 +792,12 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     const keepAdvice = () => {
       if (reply.content || reply.reasoning_content) messages.push(assistantMessage(reply));
     };
+    if (reply.tool_calls.length === 0 && await incorporate()) {
+      continue;
+    }
     if (reply.tool_calls.length === 0) {
-      const owed = answerOnly ? [] : gate.debt();
+      await checkProjects();
+      const owed = gate.debt();
       const lastAct = [...trail].reverse().find((row) => row.name !== "laya" && row.name !== "ground");
       const toolFailed = Boolean(lastAct && lastAct.ok === false);
       if (owed.length) {
@@ -851,6 +983,10 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     if (reply.content) emit({ type: "delta", text: "\n" });
     const attachments = [];
     for (const call of reply.tool_calls) {
+      if (answered.length) {
+        messages.push({ role: "tool", tool_call_id: call.id, content: "Not executed. The user answered a question; incorporate that answer and plan the next action in a new model request." });
+        continue;
+      }
       aborted(signal);
       const name = realToolName(call.function.name);
       const args = briefArgs(call.function.arguments);
@@ -877,7 +1013,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         changed,
         trustLaya: layaLoopTrained(),
       });
-      if (!(pack === 'wireshark' && packNames?.has(name)) && !servesAsk(userText, name, history)) {
+      if (!knowledgeNames.has(name) && !(pack === 'wireshark' && packNames?.has(name)) && !servesAsk(userText, name, history)) {
         messages.push({
           role: "tool",
           tool_call_id: call.id,
@@ -1005,15 +1141,54 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         : call.function.arguments;
       callArgs = searchArgs(name, callArgs);
       emit({ type: "tool", name, pack: packFor(name), args: callArgs });
+      aborted(signal);
+      progress({ id: call.id, name, args: callArgs });
       const blocked = gate.before(name, callArgs);
       const result = blocked
         ? { ok: false, error: blocked.detail || blocked.blurb, path: blocked.path }
-        : name === "say_plain"
+        : name === "context_info"
+          ? (() => {
+            if (!contextAvailable) return { ok: false, error: "Context inspection is available to the lead only." };
+            try {
+              const view = contextView(JSON.parse(callArgs || "{}"));
+              return { ok: true, snapshot: view === "last" ? lastContextSnapshot(extra.sessionId) : previewContextInfo(messages.slice(1), { sessionId: extra.sessionId, role: extra.role, assembledMessages: messages, tools: offered, sections: contextSections }) };
+            } catch (error) { return { ok: false, error: error.message }; }
+          })()
+        : knowledgeNames.has(name)
+          ? (() => {
+            let args;
+            try { args = JSON.parse(callArgs); } catch { return { ok: false, error: "Knowledge tool arguments must be a JSON object." }; }
+            if (!args || typeof args !== "object" || Array.isArray(args)) return { ok: false, error: "Knowledge tool arguments must be a JSON object." };
+            const cwd = getWorkdir();
+            if (name === "list_skills") return { ok: true, skills: listSkills(cwd) };
+            if (name === "read_skill") return readSkill(args.name, cwd);
+            if (name === "project_memory_search") return searchProjectMemory(cwd, args.query);
+            if (name === "project_memory_record") return recordProjectMemory(cwd, args);
+            return lookupProjects(args.query, cwd);
+          })()
+        : name === "ask_user"
+          ? await (async () => {
+            if (!interactive) return { ok: false, error: "Interactive questions are unavailable on this surface. State the missing detail in your reply." };
+            let args;
+            try { args = JSON.parse(callArgs); } catch { return { ok: false, error: "Question arguments must be JSON." }; }
+            try {
+              const answer = await extra.askUser(args);
+              answered.push(answer);
+              return { ok: true, ...answer };
+            } catch (error) {
+              if (signal?.aborted || error.name === "AbortError") throw error;
+              return { ok: false, error: redactSecrets(error.message || "The question could not be asked.") };
+            }
+          })()
+          : name === "say_plain"
           ? await restatePlain(callArgs, history, memory.personality, cfg, signal)
           : await executeTool(name, callArgs, cfg, {
           emit,
           signal,
           depth: 0,
+          allowedTools: catalog,
+          sourceMessages: typeof extra.sourceMessages === "function" ? extra.sourceMessages() : history,
+          originalRequestId: extra.originalRequestId, userText,
           complete: (list, config, delta, abortSignal, options) => onLane("fast", list, delta, options),
           bot: extra.bot || null,
           role: extra.role || "",
@@ -1023,10 +1198,17 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           taskId: extra.taskId || "",
         });
       ground.note(name, result);
+      if (name === "set_workdir" && result?.ok && localKnowledge.length) {
+        const fresh = knowledgePacket();
+        messages[0].content = knowledgeContext ? messages[0].content.replace(knowledgeContext, fresh) : messages[0].content + "\n" + fresh;
+        knowledgeContext = fresh;
+      }
       const image = toolImage(name, result);
       if (image) emit({ type: "shot", ...image, name });
       emit({ type: "tool_result", ...describeTool(name, callArgs, result) });
       if (result.held) {
+        messages.push({ role: "tool", tool_call_id: call.id, content: compactResult(result) });
+        progress();
         return {
           assistant: result.error || "Held.",
           messages,
@@ -1047,7 +1229,11 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         lastProof = proof;
         emit({ type: "tool", name: "harness", pack: "host", args: proof.path });
         emit({ type: "tool_result", ...proof });
-        if (proof.held) return { assistant: proof.detail || proof.blurb, messages, held: true, archive, goalStatus };
+        if (proof.held) {
+          messages.push({ role: "tool", tool_call_id: call.id, content: compactResult(result) + "\nHARNESS held: " + (proof.detail || proof.blurb) });
+          progress();
+          return { assistant: proof.detail || proof.blurb, messages, held: true, archive, goalStatus };
+        }
         toolText += `\n\nHARNESS ${proof.ok ? "PASS" : "FAIL"}: ${proof.detail || proof.blurb}`;
         if (proof.stdout) toolText += `\nstdout:\n${proof.stdout}`;
       }
@@ -1056,6 +1242,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
         tool_call_id: call.id,
         content: toolText,
       });
+      progress();
       const note = name === "host_listen_ports" && result?.stdout
         ? String(result.stdout).slice(0, 8000)
         : toolNote(result);
@@ -1069,6 +1256,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
           ? String(proof.detail || proof.blurb || note || "").slice(0, 800)
           : proof?.ok ? `${note}\nharness PASS${proof.stdout ? ` · stdout: ${proof.stdout}` : ""}` : note,
         passed: Boolean(proof?.ok),
+        ...(proof?.verification ? { verification: proof.verification } : {}),
         filePath: /^(host_file_read|host_file_write)$/.test(name) ? result?.path : undefined,
         fileBytes: /^(host_file_read|host_file_write)$/.test(name) ? result?.bytes : undefined,
       });
@@ -1093,6 +1281,13 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       }
     }
     messages.push(...attachments);
+    for (const answer of answered.splice(0)) {
+      const content = answer.answers.map(row => row.answer).join("\n");
+      messages.push({ role: "user", content });
+      await extra.onAnswer?.(answer, content);
+    }
+    progress();
+    if (await incorporate()) halt = "";
     if (halt) break;
   }
   const stuck = goal && goalStatus !== "done"
@@ -1121,7 +1316,7 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
     const evidence = answerFromAsk(userText, trail)
       || (passedClean() ? `PASS. ${lastProof.blurb.split(lastProof.path).join(basename(lastProof.path))}` : "");
     const dodge = dodgesResult(said) || (last.tool_calls.length > 0 && Boolean(evidence));
-    const owed = answerOnly ? [] : gate.debt();
+    const owed = gate.debt();
     const lastBad = [...trail].reverse().find((row) => row.ok === false && row.name !== "laya" && row.name !== "ground");
     let picked = dodge ? evidence : (said || evidence);
     if (owed.length) picked = `FAIL. Still open: ${owed.slice(0, 6).join("; ")}`;
@@ -1137,7 +1332,8 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       : `${openGoal}I hit the tool cap. Say go and I’ll continue from here.`));
     const closed = await closeWith(draft, { allowRetry: false, wantDone: goalStatus === "done", reasoningContent: last.reasoning_content });
     return closed || { assistant: draft, messages: messages.slice(1), goalStatus, archive };
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || error.name === "AbortError") throw error;
     emit({ type: "mood", mood: "idle", text: "here" });
     return {
       assistant: halt
@@ -1148,4 +1344,5 @@ export async function runTurn(history, rawText, emit, signal, extra = {}) {
       archive,
     };
   }
+  } finally { gate.finish(signal?.aborted ? "cancelled" : "finished"); }
 }

@@ -19,10 +19,12 @@ function electronApp() {
 const app = electronApp();
 const srcRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 export const ROOT = app?.isPackaged ? app.getAppPath() : srcRoot;
+export const BUILD_CHANNEL = "public";
+export const APP_NAME = "Nova Collar";
 export const APP_HOME = (() => {
   const override = String(process.env.NOVAPUP_HOME || "").trim();
   if (override && !app?.isPackaged) return resolve(override);
-  return join(homedir(), ".novapup");
+  return join(homedir(), ".nova-collar-public");
 })();
 export const BIN = app?.isPackaged
   ? join(process.resourcesPath, "mac-control")

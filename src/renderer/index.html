@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="crew.css" />
     <link rel="stylesheet" href="overlays.css" />
     <link rel="stylesheet" href="motion.css" />
+    <link rel="stylesheet" href="conversation.css" />
   </head>
   <body>
     <div class="creature" id="creature" data-mood="idle">
@@ -109,6 +110,10 @@
           <strong>settings</strong>
           <button type="button" class="sheet-x" title="Close" aria-label="Close">×</button>
         </div>
+        <p class="sheet-sub">context</p>
+        <p class="sheet-note">Inspect the last model request or make a fresh local preview. Counts and source paths only; no model request or memory search.</p>
+        <div class="packs"><button type="button" id="context-last">last request</button><button type="button" id="context-next">next preview</button></div>
+        <pre id="context-report" class="context-report" aria-live="polite">No context metadata opened yet.</pre>
         <p class="sheet-sub">software analysis</p>
         <p class="sheet-note" id="analysis-ready">Bundled REA and headless Ghidra.</p>
         <div class="packs"><button type="button" id="analysis-pick">choose an app or file</button><button type="button" id="analysis-licenses">licenses</button></div>
@@ -301,17 +306,32 @@
           <div id="terminal"></div>
         </section>
       </div>
+      <div class="input-status" id="input-status" hidden>
+        <span id="pending-input" role="status"></span>
+        <button type="button" id="resume-input" hidden>Continue</button>
+        <button type="button" id="question-open" hidden>Nova has a question · Answer</button>
+      </div>
       <footer class="mouth">
         <div class="say">
           <button type="button" class="pack-hint" id="pack-hint" hidden></button>
           <textarea id="input" rows="1" placeholder="Talk to Nova Collar"></textarea>
         </div>
+        <button type="button" id="stop" class="conversation-stop" title="Stop" aria-label="Stop" hidden>Stop</button>
         <button type="button" id="send" class="go" title="Send" aria-label="Send">
           <svg class="i i-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg>
           <svg class="i i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" /></svg>
         </button>
       </footer>
     </div>
+    <dialog id="question-dialog" class="question-dialog" aria-labelledby="question-title">
+      <form id="question-form">
+        <header><h2 id="question-title">A question from Nova</h2><button type="button" id="question-stop">Stop</button><button type="button" id="question-minimize">Minimize</button></header>
+        <p class="question-note">Choose a suggestion or write your own answer, then submit.</p>
+        <div id="question-fields"></div>
+        <p id="question-error" role="alert"></p>
+        <footer><button type="submit" id="question-submit" disabled>Send answer</button></footer>
+      </form>
+    </dialog>
     <div class="setup" id="setup" hidden>
       <div class="setup-orb" aria-hidden="true"></div>
       <p class="setup-kicker" id="setup-kicker"></p>
@@ -385,6 +405,7 @@
     <script src="setup-ui.js"></script>
     <script src="crew-render.js"></script>
     <script src="app.js"></script>
+    <script src="context-ui.js"></script>
     <script src="spec-ui.js"></script>
   </body>
 </html>

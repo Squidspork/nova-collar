@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { APP_HOME, ensureHome } from "./config.js";
 import { cleanText, isBotId, isChatId, newChatId, parseSessionId, safeJoin, safePack } from "./safe.js";
@@ -21,7 +21,9 @@ function cleanRows(rows) {
   return rows.slice(-80).flatMap((row) => {
     if (!row || typeof row !== "object") return [];
     if (row.role === "user" || row.role === "assistant") {
-      return [{ role: row.role, content: String(row.content || "").slice(0, 24_000) }];
+      return [{ role: row.role, content: String(row.content || "").slice(0, 24_000),
+        ...(typeof row.id === "string" ? { id: row.id.slice(0, 200) } : {}),
+        ...(typeof row.createdAt === "string" ? { createdAt: row.createdAt.slice(0, 80) } : {}) }];
     }
     if (row.role === "step" && row.name) {
       return [{
@@ -29,6 +31,8 @@ function cleanRows(rows) {
         name: cleanText(row.name, 64, { singleLine: true }),
         pack: safePack(row.pack),
         ok: row.ok !== false,
+        ...(row.verification ? { verification: structuredClone(row.verification) } : {}),
+        ...(row.contextSelection ? { contextSelection: structuredClone(row.contextSelection) } : {}),
         blurb: cleanText(row.blurb, 240, { singleLine: true }),
         detail: String(row.detail || "").slice(0, 8000),
       }];
@@ -55,7 +59,9 @@ function readJson(file, fallback) {
 
 function writeJson(file, value) {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(value, null, 2));
+  const temp = `${file}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(value, null, 2), { mode: 0o600 });
+  renameSync(temp, file);
 }
 
 function sessionFile(id) {
@@ -95,6 +101,8 @@ export function readSession(id) {
     updated: Number(raw.updated) || Date.now(),
     messages: cleanRows(raw.messages),
     modelMessages: cleanModelHistory(raw.modelMessages),
+    inputIds: Array.isArray(raw.inputIds) ? raw.inputIds.filter(id => typeof id === "string" && id.length <= 200).slice(-1000) : [],
+    turnState: raw.turnState && typeof raw.turnState === "object" ? { active: raw.turnState.active === true, inFlight: String(raw.turnState.inFlight || "").slice(0, 160) } : null,
     goal: cleanText(raw.goal, 400, { singleLine: true }),
     archive: cleanArchive(raw.archive),
   };
@@ -205,6 +213,8 @@ export function persistSession(id, messages, extra = {}) {
   };
   current.messages = cleanRows(messages);
   if (extra.modelMessages) current.modelMessages = cleanModelHistory(extra.modelMessages);
+  if (extra.turnState) current.turnState = extra.turnState;
+  if (extra.inputIds) current.inputIds = [...new Set([...(current.inputIds || []), ...extra.inputIds])].slice(-1000);
   current.updated = Date.now();
   if (extra.title) current.title = cleanText(extra.title, 80, { singleLine: true }) || current.title;
   writeSession(current);
@@ -223,6 +233,8 @@ export function saveSession(id, messages, extra = {}) {
   };
   current.messages = cleanRows(messages);
   if (extra.modelMessages) current.modelMessages = cleanModelHistory(extra.modelMessages);
+  if (extra.turnState) current.turnState = extra.turnState;
+  if (extra.inputIds) current.inputIds = [...new Set([...(current.inputIds || []), ...extra.inputIds])].slice(-1000);
   current.updated = Date.now();
   if (current.title === "New chat") {
     current.title = titleFrom(current.messages);

@@ -105,7 +105,7 @@ export async function runDesk(name, args) {
       return runControl("key", { key: args.key });
     case "open": {
       const target = String(args.target || args.url || args.app || "");
-      if (/^(file|javascript|data|vbscript):/i.test(target) || /(?:^|\/)\.novapup\/env(?:$|[/?#])/.test(target)) {
+      if (/^(file|javascript|data|vbscript):/i.test(target) || /(?:^|\/)\.(?:novapup|nova-collar-public)\/env(?:$|[/?#])/.test(target)) {
         return { ok: false, error: "blocked open target" };
       }
       return runControl("open", { target });

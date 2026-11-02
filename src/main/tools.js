@@ -271,7 +271,7 @@ async function runTool(name, rawArgs, cfg, ctx = {}) {
       return { ok: false, held: true, error: holdMessage("overwrite") };
     }
     if (ctx.allow && ctx.taskId && (kind || writes)) saveTask({ id: ctx.taskId, allow: false });
-    return runBash(args.command, args.cwd);
+    return runBash(args.command, args.cwd, { signal: ctx.signal, timeoutMs: Math.min(90000, Math.max(1, Number(args.timeoutMs) || 20000)) });
   }
   if (name === "read_file" || name === "host_file_read") return readUserFile(args.path);
   if (name === "write_file" || name === "host_file_write") {

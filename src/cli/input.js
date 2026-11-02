@@ -102,6 +102,7 @@ export function bindConsole({ screen, onLine, onLeave, isBusy, abortTurn }) {
   }
 
   function onEnter() {
+    if (isBusy()) return submit(input);
     const partial = themePartial(input.trim());
     if (screen.menuKind() === "theme") {
       const typed = input.trim().toLowerCase();
@@ -177,7 +178,7 @@ export function bindConsole({ screen, onLine, onLeave, isBusy, abortTurn }) {
       onLeave();
       return;
     }
-    if (isBusy()) return;
+    if (isBusy() && (key?.name === "tab" || key?.name === "up" || key?.name === "down")) return;
     if (key?.name === "escape" || key?.sequence === "\x1b") {
       screen.clearMenu();
       return;

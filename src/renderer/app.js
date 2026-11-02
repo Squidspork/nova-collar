@@ -50,7 +50,9 @@ const pendingNetworkSteps = new Map();
 const packHint = document.getElementById("pack-hint");
 const PACK_PREFIX = /^Use the \w+ pack\.\s*/i;
 let selectedPack = "";
-let queued = "";
+let conversation = { active: false, paused: false, pending: [], question: null };
+const shownInputIds = new Set();
+let questionRequestId = "";
 
 try {
   selectedPack = localStorage.getItem("novapup-pack") || "";
@@ -72,6 +74,16 @@ let busy = false;
 let streamBuf = "";
 let streamRaf = 0;
 const sendBtn = document.getElementById("send");
+const stopBtn = document.getElementById("stop");
+const inputStatus = document.getElementById("input-status");
+const pendingInput = document.getElementById("pending-input");
+const resumeBtn = document.getElementById("resume-input");
+const questionBar = document.getElementById("question-open");
+const questionDialog = document.getElementById("question-dialog");
+const questionForm = document.getElementById("question-form");
+const questionFields = document.getElementById("question-fields");
+const questionError = document.getElementById("question-error");
+const questionSubmit = document.getElementById("question-submit");
 const layout = {
   dock: "bottom",
   term: 180,
@@ -140,6 +152,7 @@ function paintMessages(messages) {
   pendingNetworkSteps.clear();
   live = null;
   pendingStep = null;
+  shownInputIds.clear();
   closeTurn();
   for (const row of messages || []) {
     if (row.role === "step") {
@@ -147,7 +160,11 @@ function paintMessages(messages) {
       continue;
     }
     if (!row?.content?.trim()) continue;
-    add(row.role, row.content);
+    const element = add(row.role, row.content);
+    if (row.inputId || row.id) {
+      element.dataset.inputId = row.inputId || row.id;
+      shownInputIds.add(row.inputId || row.id);
+    }
   }
 }
 
@@ -434,6 +451,7 @@ function renderChats(session) {
       const next = await window.pup.openChat(row.id);
       applyCrew(next);
       paintMessages(next.messages);
+      paintConversation(next.conversation);
       renderChats(next.session);
       if (!next.messages?.length && next.ready) {
         add("assistant", "New page. Same pup.");
@@ -566,10 +584,123 @@ function add(role, text, extra) {
 
 function paintSend() {
   sendBtn.classList.toggle("busy", busy);
-  sendBtn.classList.toggle("stop", busy);
-  sendBtn.title = busy ? "Stop" : "Send";
+  sendBtn.classList.remove("stop");
+  sendBtn.title = busy ? "Send guidance" : "Send";
   sendBtn.setAttribute("aria-label", sendBtn.title);
+  if (stopBtn) stopBtn.hidden = !busy;
+  if (resumeBtn) resumeBtn.disabled = busy;
+  input.placeholder = currentCrew ? `task for ${currentCrew.name}` : busy ? "Add guidance while Nova works" : "Talk to Nova Collar";
 }
+
+function retractLive() {
+  flushStream();
+  if (live) live.remove();
+  live = null;
+  streamBuf = "";
+  if (streamRaf) cancelAnimationFrame(streamRaf);
+  streamRaf = 0;
+}
+
+function openQuestion() {
+  if (!conversation.question || !questionDialog) return;
+  if (!questionDialog.open) questionDialog.showModal();
+  questionFields.querySelector("textarea")?.focus();
+}
+
+function paintQuestion(request) {
+  if (!questionBar || !questionDialog) return;
+  questionBar.hidden = !request;
+  if (!request) {
+    if (questionDialog.open) questionDialog.close();
+    questionRequestId = "";
+    questionFields.replaceChildren();
+    return;
+  }
+  questionBar.textContent = request.questions.length > 1 ? "Nova has a few questions · Answer" : "Nova has a question · Answer";
+  if (questionRequestId === request.id) return; // Minimizing preserves the separate answer drafts.
+  questionRequestId = request.id;
+  questionError.textContent = "";
+  questionSubmit.disabled = true;
+  questionFields.replaceChildren();
+  for (const [index, question] of request.questions.entries()) {
+    const field = document.createElement("fieldset");
+    const label = document.createElement("legend");
+    label.textContent = question.question;
+    field.append(label);
+    const answer = document.createElement("textarea");
+    answer.id = `question-answer-${index}`;
+    answer.dataset.questionId = question.id;
+    answer.maxLength = 4000;
+    answer.rows = 2;
+    answer.setAttribute("aria-label", `Your answer: ${question.question}`);
+    answer.placeholder = question.options?.length ? "Or write your own answer" : "Your answer";
+    const choices = document.createElement("div");
+    choices.className = "question-options";
+    const update = () => {
+      for (const choice of choices.children) choice.setAttribute("aria-pressed", String(choice.textContent === answer.value));
+      questionSubmit.disabled = !Array.from(questionFields.querySelectorAll("textarea")).every((input) => input.value.trim());
+      questionError.textContent = "";
+    };
+    for (const option of question.options || []) {
+      const choice = document.createElement("button");
+      choice.type = "button";
+      choice.textContent = option;
+      choice.setAttribute("aria-pressed", "false");
+      choice.onclick = () => { answer.value = option; update(); };
+      choices.append(choice);
+    }
+    answer.addEventListener("input", update);
+    if (choices.children.length) field.append(choices);
+    field.append(answer);
+    questionFields.append(field);
+  }
+  openQuestion();
+}
+
+function paintConversation(next) {
+  conversation = next || { active: false, paused: false, pending: [], question: null };
+  busy = Boolean(conversation.active);
+  const count = conversation.pending?.length || 0;
+  if (pendingInput) pendingInput.textContent = count ? `${count} ${count === 1 ? "message" : "messages"} ${conversation.paused ? "paused" : "waiting for the next step"}` : "";
+  if (resumeBtn) resumeBtn.hidden = !count || !conversation.paused;
+  if (inputStatus) inputStatus.hidden = !count && !conversation.question;
+  paintQuestion(conversation.question);
+  paintSend();
+}
+
+questionBar?.addEventListener("click", openQuestion);
+document.getElementById("question-minimize")?.addEventListener("click", () => questionDialog.close());
+questionDialog?.addEventListener("cancel", (event) => { event.preventDefault(); questionDialog.close(); });
+questionForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const requestId = questionRequestId;
+  if (!requestId || questionSubmit.disabled) return;
+  const answers = Array.from(questionFields.querySelectorAll("textarea"), (answer) => ({ id: answer.dataset.questionId, answer: answer.value.trim() }));
+  questionSubmit.disabled = true;
+  try {
+    const result = await window.pup.answerQuestion(requestId, answers);
+    if (result?.ok === false) throw new Error(result.error || "That answer could not be saved.");
+    if (questionRequestId === requestId && questionDialog.open) questionDialog.close();
+  } catch (error) {
+    if (questionRequestId === requestId) {
+      questionError.textContent = error.message || "That question is no longer waiting.";
+      questionSubmit.disabled = false;
+    }
+  }
+});
+resumeBtn?.addEventListener("click", async () => {
+  if (busy) return;
+  busy = true; paintSend();
+  try {
+    const result = await window.pup.resumeInput();
+    if (result?.ok === false) throw new Error(result.error || "Pending input could not resume.");
+  } catch (error) {
+    add("error", error.message || "Pending input could not resume.");
+    paintConversation((await window.pup.state()).conversation);
+  }
+});
+stopBtn?.addEventListener("click", () => window.pup.stop());
+document.getElementById("question-stop")?.addEventListener("click", () => window.pup.stop());
 
 function setMood(name, word) {
   const next = name || "idle";
@@ -637,6 +768,14 @@ goalTag?.addEventListener("click", () => {
 });
 
 window.pup.on((event) => {
+  if (event.type === "conversation") paintConversation(event);
+  if (event.type === "user_input") {
+    if (event.id && shownInputIds.has(event.id)) return;
+    retractLive();
+    const row = add("user", event.text || "");
+    if (event.id) { row.dataset.inputId = event.id; shownInputIds.add(event.id); }
+  }
+  if (event.type === "incorporated") retractLive();
   if (event.type === "models") {
     showModel(event.state.model, event.state.models, event.state.split);
     if (!models.hidden) renderModels(event.state);
@@ -649,11 +788,7 @@ window.pup.on((event) => {
     paintGoal(event.text, event.archive);
   }
   if (event.type === "retract") {
-    flushStream();
-    if (live) live.remove();
-    live = null;
-    streamBuf = "";
-    streamRaf = 0;
+    retractLive();
   }
   if (event.type === "delta") pushDelta(event.text);
   if (event.type === "tool") {
@@ -701,7 +836,7 @@ window.pup.on((event) => {
     closeTurn();
     busy = false;
     setMood("idle");
-    flushQueue();
+    paintSend();
   }
   if (event.type === "done") {
     flushStream();
@@ -717,7 +852,7 @@ window.pup.on((event) => {
     closeTurn();
     busy = false;
     setMood("idle");
-    flushQueue();
+    paintSend();
   }
   if (event.type === "intuition") {
     paintSense(event.intuition);
@@ -746,19 +881,6 @@ function growInput() {
 input.addEventListener("input", growInput);
 packHint?.addEventListener("click", () => setPack(""));
 
-function flushQueue() {
-  paintSend();
-  const next = queued;
-  queued = "";
-  if (!next) {
-    if (currentCrew) input.placeholder = `task for ${currentCrew.name}`;
-    else input.placeholder = "Talk to Nova Collar";
-    return;
-  }
-  input.value = next;
-  send();
-}
-
 async function send() {
   const raw = input.value.replace(PACK_PREFIX, "").trim();
   if (!raw) return;
@@ -768,30 +890,35 @@ async function send() {
     window.openCredits?.();
     return;
   }
-  if (busy) {
-    queued = raw;
-    input.value = "";
-    input.style.height = "";
-    input.placeholder = "queued — finishing this first";
-    return;
-  }
+  const wasBusy = busy;
   input.value = "";
   input.style.height = "";
   holdFollow();
-  add("user", raw);
-  busy = true;
-  live = null;
-  pendingStep = null;
-  closeTurn();
-  streamBuf = "";
-  paintSend();
-  setMood("think");
-  const result = await window.pup.chat(raw, selectedPack);
-  if (result?.error === "need-keys") {
-    wake.hidden = false;
-    busy = false;
-    setMood("idle");
-    flushQueue();
+  if (!wasBusy) {
+    add("user", raw);
+    busy = true;
+    live = null;
+    pendingStep = null;
+    closeTurn();
+    streamBuf = "";
+    paintSend();
+    setMood("think");
+  }
+  try {
+    const result = await window.pup.chat(raw, selectedPack);
+    if (result?.error === "need-keys") {
+      wake.hidden = false;
+      busy = false;
+      setMood("idle");
+      paintSend();
+    } else if (result?.ok === false && !result.stopped) {
+      if (!input.value) { input.value = raw; growInput(); }
+      if (wasBusy || busy) throw new Error(result.error || "Your message could not be saved.");
+    }
+  } catch (error) {
+    if (!input.value) { input.value = raw; growInput(); }
+    add("error", error.message || "Your message could not be saved.");
+    if (!wasBusy) { busy = false; setMood("idle"); paintSend(); }
   }
 }
 
@@ -807,6 +934,7 @@ window.openSpecInChat = async (text) => {
   }
   const next = await window.pup.newChat();
   paintMessages([]);
+  paintConversation(next.conversation);
   renderChats(next.session);
   applyCrew(next);
   hidePanels();
@@ -842,13 +970,11 @@ async function boot() {
   if (state.messages?.length) paintMessages(state.messages);
   else if (!state.ready) add("assistant", "Hungry Nova, in this window. Drop a chat key and I’ll wake.");
   else add("assistant", "Here. Ask, and I’ll do it.");
+  paintConversation(state.conversation);
   if (!state.setupDone) window.openSetup?.();
 }
 
-sendBtn.onclick = () => {
-  if (busy) window.pup.stop();
-  else send();
-};
+sendBtn.onclick = () => send();
 input.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && busy) {
     event.preventDefault();
@@ -1295,6 +1421,7 @@ document.getElementById("new-chat").onclick = async () => {
   if (busy) return;
   const next = await window.pup.newChat();
   paintMessages([]);
+  paintConversation(next.conversation);
   renderChats(next.session);
   applyCrew(next);
   chats.hidden = true;
@@ -1411,6 +1538,7 @@ document.getElementById("crew-delete").onclick = async () => {
     applyCrew(next);
     renderChats(next.session);
     paintMessages(next.messages || []);
+    paintConversation(next.conversation);
     paintCrew();
     crewEdit.hidden = true;
     crew.hidden = false;

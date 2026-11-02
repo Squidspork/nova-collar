@@ -141,7 +141,7 @@ export function describeTool(name, rawArgs, result = {}) {
     blurb = ok
       ? `${args.pack || result.pack || "pack"} agent → ${short(result.summary || (result.used || []).join(", ") || "done", 52)}`
       : `Sub-agent failed: ${short(result.error, 60)}`;
-    detail = lines([result.summary, (result.used || []).join(", "), ...(result.notes || [])]);
+    detail = lines([result.contextSelection ? "Context selection metadata\n" + JSON.stringify(result.contextSelection) : "", result.summary, (result.used || []).join(", "), ...(result.notes || [])]);
   } else if (name.startsWith("computer_")) {
     blurb = ok ? `Remote desk: ${name.replace("computer_", "").replaceAll("_", " ")}` : "Remote desk failed";
     detail = clip(JSON.stringify({ action: args.action, ...result, image: undefined, dataUrl: undefined }, null, 2));
@@ -170,5 +170,6 @@ export function describeTool(name, rawArgs, result = {}) {
     ok,
     blurb,
     detail: clip(detail, 6000),
+    ...(name === "subagent" && result.contextSelection ? { contextSelection: structuredClone(result.contextSelection) } : {}),
   };
 }

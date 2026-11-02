@@ -4,6 +4,7 @@ export function parseConsole(line) {
   const text = String(line || "").trim();
   if (!text) return { type: "empty" };
   if (text === "/help" || text === "/?") return { type: "help" };
+  if (/^\/context(?:\s+next)?$/i.test(text)) return { type: "context", view: /\s+next$/i.test(text) ? "next" : "last" };
   if (text === "/theme" || text === "/themes") return { type: "theme", name: "" };
   if (/^\/theme\s+/i.test(text)) return { type: "theme", name: text.replace(/^\/theme\s+/i, "").trim() };
   if (text === "/new") return { type: "new" };
@@ -35,7 +36,14 @@ export function parseConsole(line) {
 
 export const HELP = [
   "Nova Collar console. Same chats as the window. This seat is the duty officer.",
-  "Last writer wins if the window has the same chat open.",
+  "One lead turn per profile. Busy input becomes ordered guidance; Ctrl-C preserves it paused.",
+  "/continue        resume saved pending work",
+  "/checkpoints     list file checkpoints and uncovered paths",
+  "/dependencies    dated local tool/runtime availability (no network probes)",
+  "/context         inspect metadata from the last dispatched request",
+  "/context next    fresh local preview; no model or memory search",
+  "/undo [id]       restore checkpoint files if no later edits conflict",
+  "/answer [\"text\"]  explicitly answer a waiting question (one string per question)",
   "/goal            show the standing goal",
   "/goal text       set it. /goal clear turns it off",
   "/new             new shared chat",

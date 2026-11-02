@@ -119,6 +119,6 @@ export function linkNp() {
   const destDir = join(homedir(), ".local", "bin");
   mkdirSync(destDir, { recursive: true });
   const pub = linkOne(destDir, "nova-collar", target);
-  linkOne(destDir, "np", target);
+  // np belongs to the personal dev track. Public installs never replace it.
   return { ok: true, path: pub.path, linked: pub.linked, note: pub.linked ? "" : "nova-collar is already on your PATH. Left it in place." };
 }
