@@ -6,16 +6,24 @@ import {
   expectFromAsk,
   isCodePath,
   isPagePath,
+  isTestPath,
   isVerifierPath,
   probePath,
   readJobSpec,
   runJobSpec,
+  runCommand,
   shellTargets,
   snapshotIfExists,
   unreadExisting,
   verifyPath,
+  verifyCommand,
 } from "./harness-check.js";
 import { expandPath, getWorkdir } from "./workdir.js";
+import { VerificationLedger, verificationSource } from "./verification-ledger.js";
+import { Checkpoint } from "./checkpoints.js";
+import { ProjectObserver, projectRoot } from "./project-verification.js";
+import { denySecretPath } from "./safe.js";
+import { recordVerifiedRepair } from "./project-memory.js";
 
 export {
   censorPass,
@@ -177,7 +185,7 @@ function specNear(path) {
   return readJobSpec(dirname(full)) || readJobSpec(getWorkdir());
 }
 
-export function createHarness({ ask = "", remoteExec, localExec, approvalAware = false } = {}) {
+export function createHarness({ ask = "", remoteExec, localExec, approvalAware = false, sessionId = "", remoteTarget = "computer", trackProjects = false, onCheckpoint = () => {}, hasActiveWriters = () => false } = {}) {
   const wrote = new Set();
   const passed = new Set();
   const prior = new Map();
@@ -193,6 +201,23 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
   const unchecked = new Set();
   const clean = new Set();
   const broken = new Set();
+  const ledger = sessionId ? new VerificationLedger(sessionId, getWorkdir()) : null;
+  const projects = ledger && trackProjects ? new ProjectObserver(getWorkdir(), ledger) : null;
+  let checkpoint = sessionId ? new Checkpoint(sessionId, getWorkdir()) : null;
+
+  function recordCheck(path, check, phase, command, { remote = false, source, expectedHash } = {}) {
+    if (!ledger) return;
+    const previous = ledger.entries.get(ledger.identity(path, { remote, target: remoteTarget }).key);
+    const before = previous?.failure || (previous?.status === "failed" ? previous : null);
+    const after = ledger.checked(path, { ok: check.ok, phase, command, diagnostic: check.error || check.blurb, remote, target: remoteTarget, source, expectedHash });
+    if (after.status === "passed") {
+      if (before && !remote) recordVerifiedRepair(dirname(after.path), { before, after, sessionId });
+      delete after.failure; ledger.save();
+    }
+    return after;
+  }
+
+  const evidenceOn = (result, verification) => verification ? { ...result, verification: { ...verification } } : result;
 
   function tokensFor(path) {
     const base = basename(String(path || "")).toLowerCase();
@@ -246,26 +271,33 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
     return null;
   }
 
-  async function finishCheck(path, text, exec) {
+  async function finishCheck(path, text, exec, { explicit = false } = {}) {
     const opts = exec ? { expand: false, exec, expect } : { exec: localExec, expect };
+    const evidence = { remote: Boolean(exec), source: exec ? text : undefined, expectedHash: verificationSource(exec ? path : expandPath(path, getWorkdir()), exec ? text : undefined).hash };
+    const compileCommand = verifyCommand(path, opts)?.command || "";
     const compile = await verifyPath(path, opts);
     if (!compile) {
       unchecked.add(path);
       extraDebt.push(`unverified ${path}`);
+      ledger?.changed(path, { remote: Boolean(exec), target: remoteTarget, source: exec ? text : undefined });
       return proof(false, path, `unverified ${path}`, "no compile command for this file");
     }
+    let verification = recordCheck(path, compile, "syntax", compileCommand, evidence);
     unchecked.delete(path);
     if (!compile.ok) {
       broken.add(compile.path);
       clean.delete(compile.path);
-      return { ...proof(false, compile.path, compile.blurb, compile.error), held: compile.held };
+      return evidenceOn({ ...proof(false, compile.path, compile.blurb, compile.error), held: compile.held }, verification);
     }
-    const run = await probePath(path, text, { ...opts, expect: [...expect, ...tokensFor(path)] });
+    // Source modules in an observed project are verified by its declared checks,
+    // never launched as standalone applications merely because they were saved.
+    const run = !exec && projects && projectRoot(path) && !explicit ? null : await probePath(path, text, { ...opts, expect: [...expect, ...tokensFor(path)] });
+    if (run) verification = recordCheck(path, run, isTestPath(path) ? "test" : "runtime", runCommand(path, text, opts)?.command || "", evidence);
     markAsks({ runOut: run?.stdout || run?.error || "" });
     if (run && !run.ok) {
       broken.add(run.path);
       clean.delete(run.path);
-      return { ...proof(false, run.path, run.blurb, run.error), held: run.held };
+      return evidenceOn({ ...proof(false, run.path, run.blurb, run.error), held: run.held }, verification);
     }
     clean.add(compile.path);
     broken.delete(compile.path);
@@ -274,10 +306,11 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
       const spec = specNear(path);
       if (spec) {
         const job = await runJobSpec(spec, { exec: localExec });
+        if (job) verification = recordCheck(path, job, "project", spec.check, evidence);
         if (job && !job.ok) {
           broken.add(compile.path);
           clean.delete(compile.path);
-          return { ...proof(false, job.path, job.blurb, job.error), held: job.held };
+          return evidenceOn({ ...proof(false, job.path, job.blurb, job.error), held: job.held }, verification);
         }
         jobNote = job?.blurb || "";
       }
@@ -292,8 +325,12 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
       open.length ? `asks open: ${open.join("; ")}` : (asks.length ? "asks covered" : ""),
     ].filter(Boolean).join(" · ");
     if (open.length) return proof(false, compile.path, blurb, `Still open: ${open.join("; ")}`);
+    if (ledger?.error) return proof(false, compile.path, "verification state unavailable", ledger.error);
+    const identity = ledger?.identity(path, { remote: Boolean(exec), target: remoteTarget });
+    const unresolved = ledger?.unresolved().find((entry) => entry.key === identity.key);
+    if (unresolved) return proof(false, compile.path, `${unresolved.status} ${compile.path}`, unresolved.diagnostic);
     release();
-    return { ...proof(true, compile.path, blurb, blurb), stdout: String(run?.stdout || "").trim().slice(0, 300) };
+    return evidenceOn({ ...proof(true, compile.path, blurb, blurb), stdout: String(run?.stdout || "").trim().slice(0, 300) }, verification);
   }
 
   function finishPage(path, text) {
@@ -301,15 +338,18 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
     const ext = extname(path).toLowerCase();
     if (body.length < 20) {
       broken.add(path);
+      recordCheck(path, { ok: false, error: "The page is too small to be the window." }, "syntax", "structural page inspection");
       return proof(false, path, "page empty", "The page is too small to be the window.");
     }
     if ((ext === ".html" || ext === ".htm") && !/<\w/.test(body)) {
       broken.add(path);
+      recordCheck(path, { ok: false, error: "This is not HTML." }, "syntax", "structural page inspection");
       return proof(false, path, "not a page", "This is not HTML.");
     }
     sources.set(path, body);
     wrote.add(path);
     broken.delete(path);
+    recordCheck(path, { ok: true, blurb: "Structural page inspection only; browser behavior was not tested." }, "syntax", "structural page inspection");
     markAsks();
     const open = [...hardMiss(), ...openSoft()];
     const blurb = open.length ? `asks open: ${open.join("; ")}` : "page ok · asks covered";
@@ -320,6 +360,29 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
 
   return {
     asks,
+    context() { return ledger?.context() || ""; },
+    async checkProjects() { return projects ? projects.check(localExec, { activeWriter: hasActiveWriters }) : []; },
+    finish(reason = "finished") {
+      if (!checkpoint) return null;
+      const journal = checkpoint; checkpoint = null;
+      try {
+        const saved = journal.finish(reason);
+        if (saved) onCheckpoint({ type: "checkpoint", id: saved.id, files: saved.changes.length, skipped: saved.skipped });
+        return saved;
+      } catch (error) {
+        const failed = { type: "checkpoint", error: error.message, skipped: ["The checkpoint could not be saved."] };
+        onCheckpoint(failed); return failed;
+      }
+    },
+    /** Explicit verification of a restored local obligation; never runs on resume alone. */
+    async verify(path) {
+      const full = expandPath(path, getWorkdir());
+      let text;
+      try { text = readFileSync(full, "utf8"); }
+      catch { return proof(false, full, `unverified ${full}`, "source is missing or unreadable"); }
+      if (isPagePath(full)) return finishPage(full, text);
+      return finishCheck(full, text, undefined, { explicit: true });
+    },
     note(name, args, result) {
       const text = result?.text ?? result?.content;
       if (READ.has(name) && result?.ok && text != null) {
@@ -334,11 +397,14 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
       }
       if (!WRITE.has(name) || !result?.ok || !result.path) return;
       if (isCodePath(result.path) || isPagePath(result.path)) wrote.add(result.path);
+      if (isCodePath(result.path) || isPagePath(result.path)) ledger?.changed(result.path, { remote: name === "computer_write", target: remoteTarget, source: name === "computer_write" ? args?.content : undefined });
       if (typeof args?.content === "string") sources.set(result.path, args.content);
     },
     before(name, rawArgs) {
       const args = parseArgs(rawArgs);
+      projects?.prepare(name, { ...args, cwd: args.cwd || getWorkdir() });
       if (SHELL.has(name)) {
+        if (Array.isArray(args.paths)) checkpoint?.track(args.paths.map((path) => expandPath(String(path), args.cwd ? expandPath(args.cwd) : getWorkdir())));
         for (const target of shellTargets(args.command)) snapshotIfExists(target, prior);
         return null;
       }
@@ -350,6 +416,7 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
       if (name !== "computer_write" && unreadExisting(args.path, prior)) {
         return proof(false, full, "read first", "read the existing file before overwriting it");
       }
+      if (name !== "computer_write" && !denySecretPath(full)) checkpoint?.track([full]);
       if (!isCodePath(full) && !isCodePath(args.path) && !isPagePath(full) && !isPagePath(args.path)) return null;
       const patch = patchVerdict(prior.get(full) || prior.get(args.path), String(args.content || ""));
       if (!patch.ok && !approvalAware) return proof(false, full, `rewrite blocked ${full}`, patch.error);
@@ -357,8 +424,10 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
     },
     async after(name, rawArgs, result) {
       const args = parseArgs(rawArgs);
+      try {
       this.note(name, args, result);
       if (SHELL.has(name)) {
+        for (const file of shellTargets(args.command).filter((target) => existsSync(target))) ledger?.changed(file);
         if (!result?.ok) return null;
         if (result.approved) {
           // This exact command was reviewed. Keep its changes as the new baseline.
@@ -395,22 +464,25 @@ export function createHarness({ ask = "", remoteExec, localExec, approvalAware =
         return proof(false, file, `rewrite blocked ${file}`, `${patch.error}${restored && !restored.ok ? `; restore failed: ${restored.error}` : ""}`);
       }
       if (text) prior.set(file, text);
-      return finishCheck(file, text);
+      return await finishCheck(file, text);
+      } finally { projects?.observe(); }
     },
     block(reason) {
       const text = String(reason || "harness blocked").slice(0, 160);
       if (text && !extraDebt.includes(text)) extraDebt.push(text);
     },
     debt() {
+      projects?.observe();
       const touched = [...clean, ...passed, ...broken, ...unchecked].map((path) => basename(path).toLowerCase());
-      return [
+      return [...new Set([
         ...[...broken],
         ...[...unchecked],
         ...named.filter((name) => !touched.includes(name.toLowerCase())).map((name) => `write and run ${name}`),
         ...hardMiss().map((item) => `ask:${item}`),
         ...openSoft().map((item) => `ask:${item}`),
         ...extraDebt,
-      ];
+        ...(ledger?.debt() || []),
+      ])];
     },
   };
 }

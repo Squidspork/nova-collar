@@ -87,10 +87,10 @@ assert(finishToolCalls(aliasCall)[0].function.name === "host_run", "finish rewri
 const calls = new Map();
 applyToolDelta(calls, { index: 0, id: "a", function: { name: "host_file_read", arguments: "" } });
 applyToolDelta(calls, { index: 0, id: "a", function: { name: "host_file_read", arguments: "{\"path\"" } });
-applyToolDelta(calls, { index: 0, id: "a", function: { name: "host_file_read", arguments: "{\"path\":\"x\"}" } });
+applyToolDelta(calls, { index: 0, id: "a", function: { name: "host_file_read", arguments: ":\"x\"}" } });
 const once = finishToolCalls(calls, { max: 3 });
 assert(once.length === 1 && once[0].function.name === "host_file_read", "streamed repeat name is one call");
-assert(once[0].function.arguments === "{\"path\":\"x\"}", "args grow instead of stacking");
+assert(once[0].function.arguments === "{\"path\":\"x\"}", "argument deltas concatenate");
 
 const mash = new Map();
 applyToolDelta(mash, { index: 0, function: { name: "host_runhost_facts", arguments: "{\"command\":\"ps\"}" } });
@@ -139,7 +139,11 @@ const cleared = scoreTurn([
   { role: "step", name: "harness", ok: true, blurb: "compile ok" },
   { role: "assistant", content: "PASS py_compile" },
 ]);
-assert(cleared.misses.length === 0, "a later harness pass clears the miss");
+assert(cleared.misses.length > 0, "an unscoped later harness pass cannot clear a miss");
+const scopedFailure = { role: "step", name: "harness", ok: false, blurb: "run failed app.js", verification: { path: "/project/app.js", project: "/project", phase: "runtime", requiredPhase: "runtime", remote: false, status: "failed" } };
+const scopedPass = { role: "step", name: "harness", ok: true, blurb: "run ok app.js", verification: { ...scopedFailure.verification, status: "passed" } };
+assert(scoreTurn([scopedFailure, scopedPass, { role: "assistant", content: "PASS" }]).misses.length === 0, "same-path equal-strength evidence clears the matching miss");
+assert(scoreTurn([scopedFailure, { ...scopedPass, verification: { ...scopedPass.verification, phase: "syntax" } }, { role: "assistant", content: "PASS" }]).misses.length > 0, "a syntax pass leaves a runtime miss unresolved");
 
 const lookedUp = scoreTurn([
   { role: "user", content: "Who founded Hungry Nova?" },

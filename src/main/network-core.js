@@ -157,7 +157,7 @@ export function summarizePackets(rows) {
 }
 
 export class NetworkCore {
-  constructor({ home = join(homedir(), '.novapup', 'network'), run = runNetworkProcess, find = findNetworkProgram, interfaces = networkInterfaces } = {}) {
+  constructor({ home = join(homedir(), '.nova-collar-public', 'network'), run = runNetworkProcess, find = findNetworkProgram, interfaces = networkInterfaces } = {}) {
     this.home = home; this.run = run; this.find = find; this.osInterfaces = interfaces; this.active = null; this.controllers = new Set();
   }
   store() {

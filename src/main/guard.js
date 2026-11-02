@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { scrubEnv } from "./safe.js";
 import { mkdtempSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { isWindows, shellLaunch } from "./platform.js";
 
 const TMPS = [...new Set([tmpdir(), "/tmp", "/private/tmp"].map((dir) => {
@@ -18,6 +18,15 @@ const MAX_WRITE = 8 * 1024 * 1024;
 const HOT = /(?:\byes\b\s*[>|])|(?:while\s*(?:true|:|1))|(?:(?::|\btrue\b)\s*;?\s*do\b)|(?:nohup\b)|(?:&\s*$)/i;
 
 let turn = null;
+const activeCommands = new Map();
+
+export function activeWatched(root) {
+  const scope = resolve(root);
+  return [...activeCommands.values()].filter(row => {
+    const rel = relative(scope, resolve(row.cwd));
+    return !rel.startsWith(`..${sep}`) && rel !== "..";
+  }).map(row => ({ ...row }));
+}
 
 function fileSize(path) {
   try {
@@ -46,7 +55,7 @@ function tmpShot() {
   return map;
 }
 
-function growthSince(before, dir = TMP) {
+function growthSince(before, dir = tmpdir()) {
   const now = dirShot(dir);
   let grew = 0;
   const fat = [];
@@ -185,6 +194,7 @@ export function checkWrite(content) {
 
 export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
   signal = signal || turn?.signal;
+  if (signal?.aborted) return Promise.resolve({ ok: false, killed: "stop", error: "Stopped.", cwd, stdout: "", stderr: "" });
   const risky = HOT.test(String(command || ""));
   const budget = Math.min(timeoutMs || (risky ? 12_000 : 90_000), risky ? 12_000 : 90_000);
   // Shared temp directories contain other apps' downloads and installers. Watch
@@ -201,7 +211,9 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    if (turn && child.pid) turn.groups.push(child.pid);
+    const owner = turn;
+    if (owner && child.pid) owner.groups.push(child.pid);
+    if (child.pid) activeCommands.set(child.pid, { pid: child.pid, cwd: cwd || owner?.workdir || homedir(), startedAt: new Date().toISOString() });
 
     let stdout = "";
     let stderr = "";
@@ -212,11 +224,17 @@ export function runWatched(command, cwd, { signal, timeoutMs } = {}) {
       clearTimeout(timer);
       clearInterval(tick);
       signal?.removeEventListener?.("abort", onAbort);
-      if (!result.ok) killGroup(child.pid);
+      // Every shell group belongs to this invocation. Clean descendants even
+      // after a successful parent exit, and never retain a completed PID for later.
+      killGroup(child.pid);
+      activeCommands.delete(child.pid);
+      if (owner) owner.groups = owner.groups.filter(pid => pid !== child.pid);
       try { rmSync(commandTmp, { recursive: true, force: true }); } catch {}
       resolve({
         ...result,
         cwd,
+        stdout_truncated: stdout.length > 40_000,
+        stderr_truncated: stderr.length > 8_000,
         stdout: stdout.slice(0, 40_000),
         stderr: stderr.slice(0, 8_000),
       });

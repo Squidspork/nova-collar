@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pup", {
   state: () => ipcRenderer.invoke("state"),
+  contextInfo: (view = "last") => ipcRenderer.invoke("context:info", { view }),
   pickAnalysisTarget: () => ipcRenderer.invoke("analysis:pick"),
   analysisLicenses: () => ipcRenderer.invoke("analysis:licenses"),
   pickNetworkCapture: () => ipcRenderer.invoke('network:pick'),
@@ -12,6 +13,8 @@ contextBridge.exposeInMainWorld("pup", {
   openSettings: () => ipcRenderer.invoke("open-settings"),
   chat: (text, pack) => ipcRenderer.invoke("chat", { text, pack: pack || "" }),
   stop: () => ipcRenderer.invoke("stop"),
+  resumeInput: () => ipcRenderer.invoke("input:resume"),
+  answerQuestion: (requestId, answers) => ipcRenderer.invoke("question:answer", { requestId, answers }),
   sessions: () => ipcRenderer.invoke("sessions:list"),
   newChat: () => ipcRenderer.invoke("sessions:new"),
   openChat: (id) => ipcRenderer.invoke("sessions:open", id),

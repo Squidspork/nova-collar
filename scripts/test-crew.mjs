@@ -96,7 +96,14 @@ const recovered = lessonFromTurn({
     { name: "computer_exec", ok: true },
   ],
 });
-assert(recovered?.kind === "learn" && /computer_exec/.test(recovered.text), "a failed step then a different step is a lesson");
+assert(recovered === null, "an unrelated later success is not repair evidence");
+const repairFailure = { name: "harness", ok: false, verification: { path: "/project/app.js", project: "/project", remote: false, phase: "runtime", requiredPhase: "runtime", status: "failed", hash: "a".repeat(64), command: "node app.js", diagnostic: "runtime assertion failed" } };
+const repairPass = { name: "harness", ok: true, verification: { ...repairFailure.verification, status: "passed", hash: "b".repeat(64), verifiedAt: "2026-11-02T12:00:00Z" } };
+const repaired = lessonFromTurn({ ask: "fix app.js", trail: [repairFailure, repairPass] });
+assert(repaired?.kind === "learn" && repaired.evidence.failedHash !== repaired.evidence.passedHash && /app.js/.test(repaired.text), "changed source with equal-strength same-path verification learns an evidenced repair");
+assert(lessonFromTurn({ trail: [repairFailure, { ...repairPass, verification: { ...repairPass.verification, path: "/other/app.js", project: "/other" } }] }) === null, "another project cannot prove a repair");
+assert(lessonFromTurn({ trail: [repairFailure, { ...repairPass, verification: { ...repairPass.verification, phase: "syntax" } }] }) === null, "a weaker pass cannot teach a runtime repair");
+assert(lessonFromTurn({ trail: [repairFailure, { ...repairPass, verification: { ...repairPass.verification, hash: repairFailure.verification.hash } }] }) === null, "unchanged source cannot teach a changed-source repair");
 assert(lessonFromTurn({ ask: "hello", trail: [{ name: "host_disk", ok: true }] }) === null, "a clean turn teaches nothing");
 assert(lessonVerdict({ text: "cat ~/.novapup/env", pack: "host" }).ok === false, "a secret is not taught");
 assert(lessonVerdict({ text: "Read once, then act.", pack: "computer", job: { action: "refuse" } }).ok === false, "laya refusal is not taught");

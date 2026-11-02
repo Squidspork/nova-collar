@@ -1,14 +1,13 @@
 {
-  "name": "novapup",
-  "version": "0.4.0",
+  "name": "nova-collar",
+  "version": "0.5.0",
   "license": "Apache-2.0",
   "private": true,
   "description": "Nova Collar \u2014 Hungry Nova Labs agent window: chat, terminal, this system",
   "type": "module",
   "main": "src/main/index.js",
   "bin": {
-    "nova-collar": "src/cli/np.js",
-    "np": "src/cli/np.js"
+    "nova-collar": "src/cli/np.js"
   },
   "scripts": {
     "postinstall": "node scripts/vendor-xterm.js && node scripts/rebuild-pty.js && node scripts/build-mac-control.js",
@@ -30,7 +29,10 @@
     "test:analysis": "node --test scripts/test-analysis.mjs",
     "test:analysis:live": "node scripts/verify-analysis-live.mjs",
     "test:network": "node --test scripts/test-network.mjs",
-    "network:mcp": "node src/main/network-mcp.js"
+    "network:mcp": "node src/main/network-mcp.js",
+    "evaluate:harness": "node scripts/evaluate-harness.mjs",
+    "test:conversation": "electron scripts/test-conversation-app.mjs",
+    "test:conversation:main": "electron scripts/test-conversation-main.mjs"
   },
   "author": "Hungry Nova",
   "dependencies": {
@@ -47,7 +49,7 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.hungrynova.novapup",
+    "appId": "com.hungrynova.novacollar.public",
     "productName": "Nova Collar",
     "afterSign": "scripts/notarize.cjs",
     "afterAllArtifactBuild": "scripts/notarize-dmg.cjs",
@@ -171,5 +173,6 @@
   },
   "engines": {
     "node": ">=22.12.0"
-  }
+  },
+  "novaCollarChannel": "public"
 }

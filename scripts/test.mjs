@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const common = ["models", "model-history", "terminal", "approvals", "analysis", "network", "ghidra-skill", "split", "goal", "laya-steer", "install", "board", "crew", "materials", "serve", "voice", "console", "windows", "release"];
+const common = ["models", "model-history", "terminal", "approvals", "conversation", "hnl-turn", "helper-context", "context", "context-info", "request-budget", "tool-catalog", "cli-control", "streaming", "processes", "dependencies", "channels", "verification", "projects", "project-knowledge", "checkpoints", "subagent", "analysis", "network", "ghidra-skill", "split", "goal", "laya-steer", "install", "board", "crew", "materials", "serve", "voice", "console", "windows", "release"];
 const suites = process.platform === "win32" ? common : [...common, "engine"];
 for (const suite of suites) {
   const home = mkdtempSync(join(tmpdir(), "nova-test-"));

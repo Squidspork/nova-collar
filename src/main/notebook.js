@@ -75,13 +75,21 @@ export function missesFrom(messages) {
   const rows = messages || [];
   const steps = rows.filter((row) => row.role === "step");
   const out = [];
-  const harnessPassed = steps.some((row) => row.name === "harness" && row.ok);
+  const phases = { syntax: 1, runtime: 2, test: 3, project: 4 };
+  const harnessPassed = steps.some((row) => row.name === "harness" && row.ok === true);
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
+    if (step.name !== "harness" || step.ok !== false) continue;
+    const failed = step.verification;
+    const resolved = failed && steps.slice(index + 1).some((row) => {
+      const passed = row.verification;
+      return row.name === "harness" && row.ok === true && passed?.status === "passed" && passed.path === failed.path && passed.project === failed.project && passed.remote === failed.remote && phases[passed.phase] >= phases[failed.requiredPhase || failed.phase];
+    });
+    if (resolved) continue;
+    const blurb = String(step.blurb || step.detail || "harness failed");
+    out.push({ text: blurb, flag: harnessFlag(blurb), rung: "exec", at: Date.now() });
+  }
   if (!harnessPassed) {
-    for (const step of steps) {
-      if (step.name !== "harness" || step.ok !== false) continue;
-      const blurb = String(step.blurb || step.detail || "harness failed");
-      out.push({ text: blurb, flag: harnessFlag(blurb), rung: "exec", at: Date.now() });
-    }
     const wrote = steps.some((row) => /write/.test(row.name || "") && row.ok !== false);
     if (wrote && !out.some((row) => row.rung === "exec")) {
       out.push({ text: "Wrote a file with no harness proof.", flag: "no-proof", rung: "exec", at: Date.now() });

@@ -59,7 +59,7 @@ export const PACKS = [
       tool("host_disk", "Disk usage on this system. Fast — does not scan the whole home folder."),
       tool("host_listen_ports", "Listening TCP/UDP ports on this system."),
       tool("host_run_plan", "Propose a shell command. Does not run it.", { command: { type: "string" }, why: { type: "string" } }, ["command"]),
-      tool("host_run", "Run a command on this system.", { command: { type: "string" } }, ["command"]),
+      tool("host_run", "Run a command on this system. Before changing files, declare affected files or small source directories in paths for bounded backups and project verification. Undeclared shell writes are not backed up.", { command: { type: "string" }, cwd: { type: "string" }, timeoutMs: { type: "integer", minimum: 1, maximum: 90000 }, paths: { type: "array", maxItems: 50, items: { type: "string" }, description: "Mutation paths declared before execution; checkpoints cover at most 500 files, 10 MiB per file and 50 MiB per turn." } }, ["command"]),
       tool("host_file_read", "Read a local file.", { path: { type: "string" } }, ["path"]),
       tool("host_file_write_plan", "Propose a file write. Does not write.", { path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
       tool("host_file_write", "Write a local file.", { path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
@@ -283,11 +283,11 @@ function hostDiskScript() {
   return `if [ "$(uname -s)" = Darwin ]; then
   df -h / /System/Volumes/Data 2>/dev/null
   echo '---'
-  du -sh ~/.novapup "$HOME/Library/Application Support/novapup" 2>/dev/null
+  du -sh ~/.nova-collar-public "$HOME/Library/Application Support/nova-collar-public" 2>/dev/null
 else
   df -h /
   echo '---'
-  du -sh ~/.novapup "\${XDG_DATA_HOME:-$HOME/.local/share}/novapup" 2>/dev/null
+  du -sh ~/.nova-collar-public "\${XDG_DATA_HOME:-$HOME/.local/share}/nova-collar-public" 2>/dev/null
 fi`;
 }
 

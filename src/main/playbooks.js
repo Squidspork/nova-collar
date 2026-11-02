@@ -127,7 +127,7 @@ export function operatorDoctrine({ local = false, pack = "", ask = "" } = {}) {
     `Ask first: ${ask || "anything external, destructive, billed, or that leaves this system or the remote computer."}`,
     "Do not narrate tools. First line is the result. Then at most five new facts. Evidence: path, command, or source.",
     "One read, then act. If she corrects you, restate the goal in one line and follow it.",
-    "No runaway loops, no yes>, no /tmp logs. Do not reveal API keys, ~/.novapup/env, or tokens.",
+    "No runaway loops, no yes>, no /tmp logs. Do not reveal API keys, ~/.nova-collar-public/env, or tokens.",
     local ? "" : "Packs: term, host, net, docker, incident, hnl, desk, computer. Files stay in the window cwd unless you set_workdir.",
   ].filter(Boolean);
 }

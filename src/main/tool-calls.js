@@ -22,14 +22,9 @@ export function mergeName(prev, incoming) {
 }
 
 export function mergeArgs(prev, incoming) {
-  const next = String(incoming || "");
-  const cur = String(prev || "");
-  if (!next) return cur;
-  if (!cur || next === cur) return next || cur;
-  if (next.startsWith(cur)) return next;
-  if (cur.startsWith(next)) return cur;
-  if (cur.endsWith(next)) return cur;
-  return `${cur}${next}`;
+  // Chat Completions argument fragments are deltas. Equal adjacent fragments
+  // can be meaningful (100, braces, spaces, file content); never deduplicate.
+  return String(prev || "") + String(incoming || "");
 }
 
 function nextIndex(calls) {

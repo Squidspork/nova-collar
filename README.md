@@ -6,7 +6,7 @@ We use this harness at Hungry Nova Labs. I am building it into a tool we depend 
 
 ## Install
 
-**Source version: 0.4.0.** Adds a [Wireshark MCP suite](docs/wireshark.md) for bounded traffic capture, local device discovery, anomaly evidence and opening captures in Wireshark, with visible tool calls and action approvals. Wireshark/TShark and optional Nmap are separately installed. The latest notarized Mac installer is [0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1); it contains REA/Ghidra but does not include the new Wireshark pack. Use the source version for this feature until a newer platform installer is published.
+**Source version: 0.5.0.** Brings the [Hungry Nova Labs methodology](docs/HNL-METHODOLOGY.md) into the public harness: ordered saved guidance, deliberate questions, durable file/project verification, scoped repair lessons, bounded helpers, checkpoints and context budgeting. See the [implementation and limits](docs/PORTING-STATUS.md). Retains the [Wireshark MCP suite](docs/wireshark.md) for bounded traffic capture, local device discovery, anomaly evidence and opening captures in Wireshark, with visible tool calls and action approvals. Wireshark/TShark and optional Nmap are separately installed. The latest notarized Mac installer is [0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1); it contains REA/Ghidra but does not include the new Wireshark pack. Use the source version for this feature until a newer platform installer is published.
 
 **The Mac app.** Download the `.dmg` from [v0.3.1](https://github.com/Squidspork/nova-collar/releases/tag/v0.3.1), drag Nova Collar to Applications, and open it. This installer is for Apple Silicon Macs running macOS 13.5 or newer and includes the analysis engines. The obsolete v0.2.0 downloads remain withdrawn. Windows x64 builds remain available; see below.
 
@@ -36,7 +36,7 @@ npm ci
 npm run release:win
 ```
 
-The output is `dist/Nova-Collar-0.4.0-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for that dependency. The 0.3.0 analysis bundle has been engine-tested only on Apple Silicon; Windows headless analysis is experimental upstream and the Windows package has not been validated for this release.
+The output is `dist/Nova-Collar-0.5.0-x64.exe`. The installer adds Nova Collar to the Start menu and desktop. The window terminal and host commands use Windows PowerShell. The Windows build uses node-pty’s bundled Node-API binaries, so Visual Studio is not required for that dependency. The 0.3.0 analysis bundle has been engine-tested only on Apple Silicon; Windows headless analysis is experimental upstream and the Windows package has not been validated for this release.
 
 For local inference, install and start [Ollama for Windows](https://ollama.com/download/windows), then choose **On this computer (Ollama / LM Studio)**, scan, and select an installed model. Selecting a local model clears any previously configured fast/thinking roles so the whole turn stays local. The Hungry Nova endpoint and key remain saved for explicit model switching; there is no automatic cloud fallback. Local setup uses `http://127.0.0.1:11434/v1`. The model picker lists the models found on local servers at startup; use the local setup scan to refresh it. For example, select the exact installed tag `qwen3.8:27b` to use the normal local 27B model. Model names are discovered, not downloaded automatically. This includes custom models such as `rafw007/qwen3.8-27b-redteam:latest`.
 
@@ -47,6 +47,59 @@ nova-collar update laya # fetch the optional decider and set up its Python
 ```
 
 `install` shows the memory on this computer and asks where answers should come from: a model you already have, an address you paste, or a smaller local model when the memory fits. The same questions are MCP tools, `install_scan` and `install_apply`, from `node scripts/install-mcp.mjs`.
+
+## Public and development copies
+
+The public application uses `~/.nova-collar-public` for its configuration,
+chats and evidence, a separate Electron profile, and the application identity
+`com.hungrynova.novacollar.public`. It does not import an older `.novapup` profile
+automatically. Connect your chosen provider in the public window. Never commit
+connection settings or copy someone else's private profile into a release.
+
+Owner/testing builds are named **Nova Collar (dev version)**, keep their own
+profile and application identity, and do not consume public automatic updates.
+The public installer creates `nova-collar`; it leaves an existing `np` dev
+launcher alone. Back up any legacy profile before an intentional migration.
+
+## Keep working in the same conversation
+
+Send guidance while a reply is running; each message is saved separately and
+incorporated after the active model request or tool batch. Stop, errors and
+restarts leave unconsumed messages paused. **Continue** or another deliberate
+Send resumes them. An action that already started cannot be undone by steering.
+One lead turn per profile prevents the window and CLI from racing.
+
+When a detail is needed, a question panel offers unselected suggestions and a
+separate text field. Choose or type an answer, then submit. Minimize preserves
+the question draft; Stop cancels the wait. Question wording and silence are
+never authorization. The CLI accepts busy guidance, `/continue`, and explicit
+`/answer ["answer one", "answer two"]`; noninteractive runs state missing details
+without waiting for a terminal answer.
+
+`/checkpoints` lists file versions and uncovered paths. `/undo [id]` restores
+covered files only if no subsequent edits conflict; it does not undo external
+service actions. Declare shell mutations with `host_run.paths` before execution.
+Project checks use a human-authored `.nova/checks.json` or existing manifest
+commands. Missing checks and partial coverage remain unverified.
+
+`/context` shows metadata from the actual last dispatched lead request after
+compaction. `/context next` builds a fresh local preview. The assistant has the
+same read-only `context_info` tool; Settings → context exposes both views.
+Counts include tool schemas and reserved reply capacity, and distinguish full
+instruction files, skill catalogs, bounded memory, and project references.
+Snapshots keep counts and source paths, with no copied prompt/file/schema
+bodies. Estimates are not provider billing. Instruction files load in full within
+explicit limits; referenced files require a separate read.
+
+Helpers receive a bounded packet with original/latest incorporated message
+sources, timestamps and omission counts. Pending messages are excluded until
+incorporated. Image evidence retains its actual source, and helper selection
+metadata is saved with the tool receipt.
+
+`/dependencies` reports dated local tool availability without model probes or
+installation. `npm run evaluate:harness` emits a reproducible isolated fixture
+report, with source/grader hashes. It measures harness behavior, not live model
+quality or general coding parity.
 
 ## Pick a model
 
@@ -61,7 +114,7 @@ Hosted models refresh on launch, after connecting a provider, and when opening t
 
 That is the whole connection. If I set up Nova Collar on another computer and hand someone a key, the window connects and starts working — no files to edit, nothing else to wire.
 
-**By hand, if you prefer.** The window writes your choice to `~/.novapup/env` (macOS and Linux) or `.novapup\env` in your user profile (Windows). You can edit it directly:
+**By hand, if you prefer.** The window writes your choice to `~/.nova-collar-public/env` (macOS and Linux) or `.nova-collar-public\env` in your user profile (Windows). You can edit it directly:
 
 - `HNL_FAST_MODEL` / `HNL_FAST_URL` — the fast model works the harness on this computer.
 - `HNL_THINK_MODEL` / `HNL_THINK_URL` — the thinking model forms the plan and checks what the work turned up.
@@ -114,7 +167,7 @@ headless Ghidra automatically. The app owns the helper processes; users do not
 start a server or configure MCP.
 
 Each investigation has an explicit target and session. Results and evidence are
-saved in `~/.novapup/analysis`. Finished investigations close their helpers;
+saved in `~/.nova-collar-public/analysis`. Finished investigations close their helpers;
 idle sessions close after ten minutes, and quitting Collar saves and closes
 active sessions. Cancel stops the current request. Results distinguish evidence
 from inference, and large responses can be read in pages. A selected remote
@@ -133,11 +186,11 @@ requirements; bundling REA and Ghidra does not install every third-party engine.
 
 ### The terminal is a two-way door
 
-The window has a live terminal. The agent can type into it and read it, so it can run a command where you can watch, and the chat shows what it typed. You can also talk back to the agent from that same terminal: `np "what you want"` runs a turn on the same chats as the window. When the agent changes its working directory, the terminal follows. It is meant for frictionless system work — you and the agent at one prompt.
+The window has a live terminal. The agent can type into it and read it, so it can run a command where you can watch, and the chat shows what it typed. You can also talk back to the agent from that same terminal: `nova-collar "what you want"` runs a turn on the same chats as the window. When the agent changes its working directory, the terminal follows. It is meant for frictionless system work — you and the agent at one prompt.
 
 ### The pack
 
-The bots are the pack. Each has a standing role, a voice, and one steer pack. Members on the same pack teach each other: a correction, or a failed step followed by a different step that worked, is kept for the others. Laya drops a lesson that does not belong to that pack, or that was already taught.
+The bots are the pack. Each has a standing role, a voice, and one steer pack. Members on the same pack share explicit user corrections and evidence-linked repairs. A repair lesson requires the same scope, changed source and equal-or-stronger passing verification; an unrelated successful step teaches nothing. Laya drops a lesson that does not belong to that pack, or that was already taught.
 
 The Pack is also where longer work goes, so the conversation keeps moving. You open the Pack and write a task — what needs doing, what done looks like, and who holds it — or you tell Nova Collar in the chat to take care of it. A task runs once, every minute, or every three minutes, until the goal is met. The board shows what is open, worked, and finished. Before a file is replaced, three older copies are kept. If you assigned the task, the Pack waits for you before it writes; if Nova Collar assigned it, the Pack keeps going until an overwrite or a delete, then waits. When the goal is met, the writeup lands in a chat named for that task.
 
